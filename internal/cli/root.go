@@ -11,19 +11,21 @@ import (
 
 var errNotImplemented = errors.New("command not implemented yet")
 
-// VersionInfo describes the build metadata printed by the version command.
-type VersionInfo struct {
-	Version string
-	Commit  string
-	Built   string
-}
+type (
+	// VersionInfo describes the build metadata printed by the version command.
+	VersionInfo struct {
+		Version string
+		Commit  string
+		Built   string
+	}
 
-type globalOptions struct {
-	NoColor bool
-	Verbose bool
-	Debug   bool
-	Config  string
-}
+	globalOptions struct {
+		NoColor bool
+		Verbose bool
+		Debug   bool
+		Config  string
+	}
+)
 
 func normalizeVersionInfo(info VersionInfo) VersionInfo {
 	if info.Version == "" {
