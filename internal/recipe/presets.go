@@ -10,15 +10,15 @@ func NewPreset(name string) (*Recipe, error) {
 	case PresetWebPostgres:
 		r = presetBase("example-web", "example.com/example-web", ProjectTypeWeb)
 		r.Database.Driver = DatabaseDriverPostgres
-		r.Database.Migrations = DatabaseMigrationsGoose
+		r.Database.Migrations = DatabaseMigrationsMigrate
 	case PresetWebMySQL:
 		r = presetBase("example-web", "example.com/example-web", ProjectTypeWeb)
 		r.Database.Driver = DatabaseDriverMySQL
-		r.Database.Migrations = DatabaseMigrationsGoose
+		r.Database.Migrations = DatabaseMigrationsMigrate
 	case PresetWebSQLite:
 		r = presetBase("example-web", "example.com/example-web", ProjectTypeWeb)
 		r.Database.Driver = DatabaseDriverSQLite
-		r.Database.Migrations = DatabaseMigrationsGoose
+		r.Database.Migrations = DatabaseMigrationsMigrate
 	case PresetCLIBasic:
 		r = presetBase("example-cli", "example.com/example-cli", ProjectTypeCLI)
 	default:

@@ -3,8 +3,6 @@ package recipe
 import (
 	"fmt"
 	"os"
-
-	"gopkg.in/yaml.v3"
 )
 
 func Save(path string, r *Recipe) error {
@@ -14,7 +12,7 @@ func Save(path string, r *Recipe) error {
 		return err
 	}
 
-	data, err := yaml.Marshal(r)
+	data, err := MarshalYAML(r)
 	if err != nil {
 		return fmt.Errorf("save recipe %q: %w", path, err)
 	}
