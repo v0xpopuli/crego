@@ -60,12 +60,14 @@ func defaultComponents() []Component {
 			Category:    CategoryProject,
 			Name:        "Web project",
 			Description: "HTTP service project scaffold.",
+			Files:       []TemplateFile{{Source: "project/README.md.tmpl", Target: "README.md"}},
 		},
 		{
 			ID:          IDProjectCLI,
 			Category:    CategoryProject,
 			Name:        "CLI project",
 			Description: "Command-line application project scaffold.",
+			Files:       []TemplateFile{{Source: "project/README.md.tmpl", Target: "README.md"}},
 		},
 		{
 			ID:          IDLayoutMinimal,
