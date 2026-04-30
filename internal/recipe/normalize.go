@@ -14,11 +14,11 @@ func Normalize(r *Recipe) *Recipe {
 	r.Go.Version = strings.TrimSpace(r.Go.Version)
 	r.Layout.Style = normalizeEnum(r.Layout.Style)
 	r.Server.Framework = normalizeEnum(r.Server.Framework)
+	r.Configuration.Format = normalizeEnum(r.Configuration.Format)
 	r.Database.Driver = normalizeEnum(r.Database.Driver)
 	r.Database.Framework = normalizeEnum(r.Database.Framework)
 	r.Database.Migrations = normalizeEnum(r.Database.Migrations)
-	r.Configuration.Format = normalizeEnum(r.Configuration.Format)
-	r.Logging.Provider = normalizeEnum(r.Logging.Provider)
+	r.Logging.Framework = normalizeEnum(r.Logging.Framework)
 	r.Logging.Format = normalizeEnum(r.Logging.Format)
 
 	return r

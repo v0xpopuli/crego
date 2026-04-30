@@ -1,0 +1,156 @@
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+package app
+{{ else -}}
+package middleware
+{{ end }}
+
+{{ if or (eq .Recipe.Server.Framework "nethttp") (eq .Recipe.Server.Framework "chi") -}}
+import (
+	"net/http"
+	"time"
+
+{{ if ne .Recipe.Layout.Style "minimal" -}}
+	"{{ .ModulePath }}/internal/logging"
+{{ end -}}
+)
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(status int) {
+	r.status = status
+	r.ResponseWriter.WriteHeader(status)
+}
+
+func (r *statusRecorder) Write(data []byte) (int, error) {
+	if r.status == 0 {
+		r.status = http.StatusOK
+	}
+	return r.ResponseWriter.Write(data)
+}
+
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+func Logging(logger *Logger) func(http.Handler) http.Handler {
+{{ else -}}
+func Logging(logger *logging.Logger) func(http.Handler) http.Handler {
+{{ end -}}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+			recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+			next.ServeHTTP(recorder, r)
+
+			logger.Info(
+				"request",
+				"method", r.Method,
+				"path", r.URL.Path,
+				"status", recorder.status,
+				"duration", time.Since(start).String(),
+				"request_id", RequestIDFromContext(r.Context()),
+			)
+		})
+	}
+}
+{{ end -}}
+{{ if eq .Recipe.Server.Framework "gin" -}}
+import (
+	"time"
+
+	"github.com/gin-gonic/gin"
+{{ if ne .Recipe.Layout.Style "minimal" }}
+	"{{ .ModulePath }}/internal/logging"
+{{ end -}}
+)
+
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+func Logging(logger *Logger) gin.HandlerFunc {
+{{ else -}}
+func Logging(logger *logging.Logger) gin.HandlerFunc {
+{{ end -}}
+	return func(c *gin.Context) {
+		start := time.Now()
+		c.Next()
+
+		logger.Info(
+			"request",
+			"method", c.Request.Method,
+			"path", c.Request.URL.Path,
+			"status", c.Writer.Status(),
+			"duration", time.Since(start).String(),
+			"request_id", requestIDFromGin(c),
+		)
+	}
+}
+{{ end -}}
+{{ if eq .Recipe.Server.Framework "echo" -}}
+import (
+	"time"
+
+	"github.com/labstack/echo/v4"
+{{ if ne .Recipe.Layout.Style "minimal" }}
+	"{{ .ModulePath }}/internal/logging"
+{{ end -}}
+)
+
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+func Logging(logger *Logger) echo.MiddlewareFunc {
+{{ else -}}
+func Logging(logger *logging.Logger) echo.MiddlewareFunc {
+{{ end -}}
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			start := time.Now()
+			err := next(c)
+			status := c.Response().Status
+			if status == 0 {
+				status = httpStatusOK
+			}
+
+			logger.Info(
+				"request",
+				"method", c.Request().Method,
+				"path", c.Request().URL.Path,
+				"status", status,
+				"duration", time.Since(start).String(),
+				"request_id", requestIDFromEcho(c),
+			)
+			return err
+		}
+	}
+}
+
+const httpStatusOK = 200
+{{ end -}}
+{{ if eq .Recipe.Server.Framework "fiber" -}}
+import (
+	"time"
+
+	"github.com/gofiber/fiber/v2"
+{{ if ne .Recipe.Layout.Style "minimal" }}
+	"{{ .ModulePath }}/internal/logging"
+{{ end -}}
+)
+
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+func Logging(logger *Logger) fiber.Handler {
+{{ else -}}
+func Logging(logger *logging.Logger) fiber.Handler {
+{{ end -}}
+	return func(c *fiber.Ctx) error {
+		start := time.Now()
+		err := c.Next()
+
+		logger.Info(
+			"request",
+			"method", c.Method(),
+			"path", c.Path(),
+			"status", c.Response().StatusCode(),
+			"duration", time.Since(start).String(),
+			"request_id", requestIDFromFiber(c),
+		)
+		return err
+	}
+}
+{{ end -}}

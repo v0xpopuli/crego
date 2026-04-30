@@ -3,6 +3,8 @@ package generator
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"go/format"
 	"io/fs"
 	"strings"
 	"text/template"
@@ -19,6 +21,7 @@ type (
 		ModulePath   string
 		Components   []component.Component
 		ComponentIDs []string
+		GoModules    []component.GoModule
 	}
 
 	renderedFile struct {
@@ -45,13 +48,54 @@ func renderFiles(ctx context.Context, templates fs.FS, source *recipe.Recipe, pl
 		if err != nil {
 			return nil, err
 		}
+		target, err := renderTemplateText(file.Source, file.Target, data, funcs)
+		if err != nil {
+			return nil, err
+		}
+		content, err = formatRenderedContent(file.Source, target, content)
+		if err != nil {
+			return nil, err
+		}
 		result = append(result, renderedFile{
 			Source:  file.Source,
-			Target:  file.Target,
+			Target:  target,
 			Content: content,
 		})
 	}
 	return result, nil
+}
+
+func RenderFileTargets(source *recipe.Recipe, plan *Plan) ([]component.TemplateFile, error) {
+	if plan == nil || len(plan.Files) == 0 {
+		return []component.TemplateFile{}, nil
+	}
+
+	data := newRenderContext(source, plan)
+	funcs := templateFuncs(data.ComponentIDs)
+	files := make([]component.TemplateFile, 0, len(plan.Files))
+	for _, file := range plan.Files {
+		target, err := renderTemplateText(file.Source, file.Target, data, funcs)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, component.TemplateFile{
+			Source: file.Source,
+			Target: target,
+		})
+	}
+	return files, nil
+}
+
+func formatRenderedContent(source string, target string, content []byte) ([]byte, error) {
+	if !strings.HasSuffix(target, ".go") {
+		return content, nil
+	}
+
+	formatted, err := format.Source(content)
+	if err != nil {
+		return nil, &TemplateRenderError{Source: source, Err: fmt.Errorf("format target %q: %w", target, err)}
+	}
+	return formatted, nil
 }
 
 func renderTemplate(templates fs.FS, source string, data renderContext, funcs template.FuncMap) ([]byte, error) {
@@ -72,18 +116,36 @@ func renderTemplate(templates fs.FS, source string, data renderContext, funcs te
 	return buffer.Bytes(), nil
 }
 
+func renderTemplateText(source string, raw string, data renderContext, funcs template.FuncMap) (string, error) {
+	tmpl, err := template.New(source + " target").Option("missingkey=error").Funcs(funcs).Parse(raw)
+	if err != nil {
+		return "", &TemplateRenderError{Source: source, Err: err}
+	}
+
+	var buffer bytes.Buffer
+	if err := tmpl.Execute(&buffer, data); err != nil {
+		return "", &TemplateRenderError{Source: source, Err: err}
+	}
+	return buffer.String(), nil
+}
+
 func newRenderContext(source *recipe.Recipe, plan *Plan) renderContext {
+	resolved := *source
+	recipe.Normalize(&resolved)
+	recipe.ApplyDefaults(&resolved)
+
 	componentIDs := make([]string, 0, len(plan.Components))
 	for _, current := range plan.Components {
 		componentIDs = append(componentIDs, current.ID)
 	}
 
 	return renderContext{
-		Recipe:       source,
-		ProjectName:  source.Project.Name,
-		ModulePath:   source.Project.Module,
+		Recipe:       &resolved,
+		ProjectName:  resolved.Project.Name,
+		ModulePath:   resolved.Project.Module,
 		Components:   append([]component.Component(nil), plan.Components...),
 		ComponentIDs: componentIDs,
+		GoModules:    append([]component.GoModule(nil), plan.GoModules...),
 	}
 }
 

@@ -35,7 +35,7 @@ func NewPreset(name string) (*Recipe, error) {
 }
 
 func presetBase(name string, module string, projectType string) Recipe {
-	return Recipe{
+	r := Recipe{
 		Version: VersionV1,
 		Project: ProjectConfig{
 			Name:   name,
@@ -46,4 +46,8 @@ func presetBase(name string, module string, projectType string) Recipe {
 			Format: ConfigurationFormatEnv,
 		},
 	}
+	if projectType == ProjectTypeWeb {
+		r.CI.GitHubActions = true
+	}
+	return r
 }

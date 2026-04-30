@@ -1,0 +1,15 @@
+.PHONY: test run build
+
+APP_NAME ?= {{ .ProjectName }}
+BUILD_DIR ?= ./build
+MAIN_PACKAGE ?= ./cmd/{{ .ProjectName }}
+
+test:
+	go test ./...
+
+run:
+	go run $(MAIN_PACKAGE)
+
+build:
+	mkdir -p $(BUILD_DIR)
+	go build -o $(BUILD_DIR)/$(APP_NAME) $(MAIN_PACKAGE)

@@ -1,0 +1,140 @@
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+package app
+{{ else -}}
+package middleware
+{{ end }}
+
+{{ if or (eq .Recipe.Server.Framework "nethttp") (eq .Recipe.Server.Framework "chi") -}}
+import (
+	"context"
+	"net/http"
+	"strconv"
+	"time"
+)
+
+const requestIDHeader = "X-Request-ID"
+
+type requestIDContextKey struct{}
+
+func RequestID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestID := r.Header.Get(requestIDHeader)
+		if requestID == "" {
+			requestID = generateRequestID()
+		}
+		w.Header().Set(requestIDHeader, requestID)
+		ctx := context.WithValue(r.Context(), requestIDContextKey{}, requestID)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func RequestIDFromContext(ctx context.Context) string {
+	requestID, _ := ctx.Value(requestIDContextKey{}).(string)
+	return requestID
+}
+
+func generateRequestID() string {
+	return strconv.FormatInt(time.Now().UnixNano(), 36)
+}
+{{ end -}}
+{{ if eq .Recipe.Server.Framework "gin" -}}
+import (
+	"strconv"
+	"time"
+
+	"github.com/gin-gonic/gin"
+)
+
+const (
+	requestIDHeader = "X-Request-ID"
+	requestIDKey    = "request_id"
+)
+
+func RequestID() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		requestID := c.GetHeader(requestIDHeader)
+		if requestID == "" {
+			requestID = generateRequestID()
+		}
+		c.Set(requestIDKey, requestID)
+		c.Writer.Header().Set(requestIDHeader, requestID)
+		c.Next()
+	}
+}
+
+func requestIDFromGin(c *gin.Context) string {
+	requestID, _ := c.Get(requestIDKey)
+	value, _ := requestID.(string)
+	return value
+}
+
+func generateRequestID() string {
+	return strconv.FormatInt(time.Now().UnixNano(), 36)
+}
+{{ end -}}
+{{ if eq .Recipe.Server.Framework "echo" -}}
+import (
+	"strconv"
+	"time"
+
+	"github.com/labstack/echo/v4"
+)
+
+const (
+	requestIDHeader = "X-Request-ID"
+	requestIDKey    = "request_id"
+)
+
+func RequestID(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		requestID := c.Request().Header.Get(requestIDHeader)
+		if requestID == "" {
+			requestID = generateRequestID()
+		}
+		c.Set(requestIDKey, requestID)
+		c.Response().Header().Set(requestIDHeader, requestID)
+		return next(c)
+	}
+}
+
+func requestIDFromEcho(c echo.Context) string {
+	requestID, _ := c.Get(requestIDKey).(string)
+	return requestID
+}
+
+func generateRequestID() string {
+	return strconv.FormatInt(time.Now().UnixNano(), 36)
+}
+{{ end -}}
+{{ if eq .Recipe.Server.Framework "fiber" -}}
+import (
+	"strconv"
+	"time"
+
+	"github.com/gofiber/fiber/v2"
+)
+
+const (
+	requestIDHeader = "X-Request-ID"
+	requestIDKey    = "request_id"
+)
+
+func RequestID(c *fiber.Ctx) error {
+	requestID := c.Get(requestIDHeader)
+	if requestID == "" {
+		requestID = generateRequestID()
+	}
+	c.Locals(requestIDKey, requestID)
+	c.Set(requestIDHeader, requestID)
+	return c.Next()
+}
+
+func requestIDFromFiber(c *fiber.Ctx) string {
+	requestID, _ := c.Locals(requestIDKey).(string)
+	return requestID
+}
+
+func generateRequestID() string {
+	return strconv.FormatInt(time.Now().UnixNano(), 36)
+}
+{{ end -}}
