@@ -133,7 +133,7 @@ func (s *CliTestSuite) TestComponentsShowCommand() {
 			s.Require().Contains(out, "files:")
 			s.Require().Contains(out, "go_modules:")
 			s.Require().Contains(out, "hooks:")
-			s.Require().Contains(out, "support_status: planned-not-yet-generated")
+			s.Require().Contains(out, "support_status:")
 		})
 	}
 

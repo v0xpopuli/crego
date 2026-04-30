@@ -1,13 +1,13 @@
 package recipe
 
 const (
-	defaultGoVersion       = "1.24"
-	defaultLayoutStyle     = LayoutStyleMinimal
-	defaultServerFramework = ServerFrameworkNetHTTP
-	defaultServerPort      = 8080
-	defaultConfigFormat    = ConfigurationFormatEnv
-	defaultLoggingProvider = LoggingProviderSlog
-	defaultLoggingFormat   = LoggingFormatText
+	defaultGoVersion        = "1.24"
+	defaultLayoutStyle      = LayoutStyleMinimal
+	defaultServerFramework  = ServerFrameworkNetHTTP
+	defaultServerPort       = 8080
+	defaultConfigFormat     = ConfigurationFormatEnv
+	defaultLoggingFramework = LoggingFrameworkSlog
+	defaultLoggingFormat    = LoggingFormatText
 )
 
 func ApplyDefaults(r *Recipe) *Recipe {
@@ -37,6 +37,10 @@ func ApplyDefaults(r *Recipe) *Recipe {
 		}
 	}
 
+	if r.Configuration.Format == "" {
+		r.Configuration.Format = defaultConfigFormat
+	}
+
 	if r.Database.Driver == "" {
 		r.Database.Driver = DatabaseDriverNone
 	}
@@ -47,19 +51,11 @@ func ApplyDefaults(r *Recipe) *Recipe {
 		r.Database.Migrations = DatabaseMigrationsNone
 	}
 
-	if r.Configuration.Format == "" {
-		r.Configuration.Format = defaultConfigFormat
-	}
-
-	if r.Logging.Provider == "" {
-		r.Logging.Provider = defaultLoggingProvider
+	if r.Logging.Framework == "" {
+		r.Logging.Framework = defaultLoggingFramework
 	}
 	if r.Logging.Format == "" {
 		r.Logging.Format = defaultLoggingFormat
-	}
-
-	if !r.CI.githubActionsSet {
-		r.CI.GitHubActions = true
 	}
 
 	return r

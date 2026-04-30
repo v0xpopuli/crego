@@ -1,0 +1,78 @@
+package main
+
+import (
+	"context"
+{{ if ne .Recipe.Configuration.Format "env" -}}
+	"flag"
+{{ end -}}
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"{{ .ModulePath }}/internal/app"
+{{ if ne .Recipe.Layout.Style "minimal" -}}
+	"{{ .ModulePath }}/internal/config"
+{{ end -}}
+)
+{{ if ne .Recipe.Configuration.Format "env" }}
+const (
+	configArgumentName = "config"
+	configDefaultPath  = "configs/config.{{ .Recipe.Configuration.Format }}"
+	configUsageMessage = "Path to the configuration file"
+)
+{{ end }}
+func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	cfg, err := loadConfig()
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "load config: %v\n", err)
+		os.Exit(1)
+	}
+
+	application, err := app.New(ctx, cfg)
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "initialize application: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := application.Run(); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "run application: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+func loadConfig() (app.Config, error) {
+{{ else -}}
+func loadConfig() (config.Config, error) {
+{{ end -}}
+{{ if eq .Recipe.Configuration.Format "env" -}}
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+	return app.LoadConfig(app.ConfigOptions{})
+{{ else -}}
+	return config.LoadConfig(config.ConfigOptions{})
+{{ end -}}
+{{ else -}}
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+	return app.LoadConfig(app.ConfigOptions{Path: getConfigPath()})
+{{ else -}}
+	return config.LoadConfig(config.ConfigOptions{Path: getConfigPath()})
+{{ end -}}
+{{ end -}}
+}
+{{ if ne .Recipe.Configuration.Format "env" }}
+func getConfigPath() string {
+	configPath := flag.String(configArgumentName, "", configUsageMessage)
+	flag.Parse()
+	if *configPath != "" {
+		return *configPath
+	}
+	if os.Getenv("CONFIG_PATH") != "" {
+		return ""
+	}
+	return configDefaultPath
+}
+{{ end -}}

@@ -9,6 +9,7 @@ import (
 var (
 	moduleFirstElementPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9.-]*[.][a-zA-Z0-9.-]+$`)
 	modulePathSegmentPattern  = regexp.MustCompile(`^[A-Za-z0-9._~!$&'()*+,;=:@/-]+$`)
+	projectNamePattern        = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 )
 
 func Validate(r *Recipe) error {
@@ -27,6 +28,8 @@ func Validate(r *Recipe) error {
 	}
 	if r.Project.Name == "" {
 		problems = append(problems, "project.name is required")
+	} else if !isSafeProjectName(r.Project.Name) {
+		problems = append(problems, "project.name must be a safe single path segment")
 	}
 	if r.Project.Module == "" {
 		problems = append(problems, "project.module is required")
@@ -46,11 +49,11 @@ func Validate(r *Recipe) error {
 	if r.Server.Framework != "" {
 		problems = appendEnumProblem(problems, "server.framework", r.Server.Framework, serverFrameworkValues())
 	}
+	problems = appendEnumProblem(problems, "configuration.format", r.Configuration.Format, configurationFormatValues())
 	problems = appendEnumProblem(problems, "database.driver", r.Database.Driver, databaseDriverValues())
 	problems = appendEnumProblem(problems, "database.framework", r.Database.Framework, databaseFrameworkValues())
 	problems = appendEnumProblem(problems, "database.migrations", r.Database.Migrations, databaseMigrationValues())
-	problems = appendEnumProblem(problems, "configuration.format", r.Configuration.Format, configurationFormatValues())
-	problems = appendEnumProblem(problems, "logging.provider", r.Logging.Provider, loggingProviderValues())
+	problems = appendEnumProblem(problems, "logging.framework", r.Logging.Framework, loggingFrameworkValues())
 	problems = appendEnumProblem(problems, "logging.format", r.Logging.Format, loggingFormatValues())
 
 	if validDatabaseDriver && validDatabaseFramework {
@@ -114,6 +117,10 @@ func serverFrameworkValues() []string {
 	return []string{ServerFrameworkNetHTTP, ServerFrameworkChi, ServerFrameworkGin, ServerFrameworkEcho, ServerFrameworkFiber}
 }
 
+func configurationFormatValues() []string {
+	return []string{ConfigurationFormatEnv, ConfigurationFormatYAML, ConfigurationFormatJSON, ConfigurationFormatTOML}
+}
+
 func databaseDriverValues() []string {
 	return []string{DatabaseDriverNone, DatabaseDriverPostgres, DatabaseDriverMySQL, DatabaseDriverSQLite}
 }
@@ -126,12 +133,8 @@ func databaseMigrationValues() []string {
 	return []string{DatabaseMigrationsNone, DatabaseMigrationsGoose, DatabaseMigrationsMigrate}
 }
 
-func configurationFormatValues() []string {
-	return []string{ConfigurationFormatEnv, ConfigurationFormatYAML, ConfigurationFormatJSON, ConfigurationFormatTOML}
-}
-
-func loggingProviderValues() []string {
-	return []string{LoggingProviderSlog, LoggingProviderZap, LoggingProviderZerolog, LoggingProviderLogrus}
+func loggingFrameworkValues() []string {
+	return []string{LoggingFrameworkSlog, LoggingFrameworkZap, LoggingFrameworkZerolog, LoggingFrameworkLogrus}
 }
 
 func loggingFormatValues() []string {
@@ -153,6 +156,13 @@ func containsString(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func isSafeProjectName(name string) bool {
+	if !projectNamePattern.MatchString(name) {
+		return false
+	}
+	return name != "." && name != ".." && !strings.ContainsAny(name, `/\`)
 }
 
 func looksLikeGoModulePath(module string) bool {

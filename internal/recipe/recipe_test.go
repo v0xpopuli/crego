@@ -31,14 +31,14 @@ server:
   framework: chi
   port: 8080
   graceful_shutdown: true
+configuration:
+  format: yaml
 database:
   driver: postgres
   framework: pgx
   migrations: goose
-configuration:
-  format: yaml
 logging:
-  provider: slog
+  framework: slog
   format: json
   request_logging: true
 observability:
@@ -51,7 +51,6 @@ deployment:
   compose: true
 ci:
   github_actions: true
-  gitlab_ci: true
 `)
 
 	r, err := Load(path)
@@ -59,11 +58,9 @@ ci:
 	s.Require().NoError(err)
 	s.Require().Equal("orders-web", r.Project.Name)
 	s.Require().Equal(ServerFrameworkChi, r.Server.Framework)
-	s.Require().Equal(DatabaseDriverPostgres, r.Database.Driver)
 	s.Require().Equal(ConfigurationFormatYAML, r.Configuration.Format)
+	s.Require().Equal(DatabaseDriverPostgres, r.Database.Driver)
 	s.Require().Equal(LoggingFormatJSON, r.Logging.Format)
-	s.Require().True(r.CI.GitHubActions)
-	s.Require().True(r.CI.GitLabCI)
 }
 
 func (s *RecipeTestSuite) TestLoadMinimalWebRecipeAppliesDefaults() {
@@ -82,14 +79,12 @@ project:
 	s.Require().Equal(ServerFrameworkNetHTTP, r.Server.Framework)
 	s.Require().Equal(8080, r.Server.Port)
 	s.Require().True(r.Server.GracefulShutdown)
+	s.Require().Equal(ConfigurationFormatEnv, r.Configuration.Format)
 	s.Require().Equal(DatabaseDriverNone, r.Database.Driver)
 	s.Require().Equal(DatabaseFrameworkNone, r.Database.Framework)
 	s.Require().Equal(DatabaseMigrationsNone, r.Database.Migrations)
-	s.Require().Equal(ConfigurationFormatEnv, r.Configuration.Format)
-	s.Require().Equal(LoggingProviderSlog, r.Logging.Provider)
+	s.Require().Equal(LoggingFrameworkSlog, r.Logging.Framework)
 	s.Require().Equal(LoggingFormatText, r.Logging.Format)
-	s.Require().True(r.CI.GitHubActions)
-	s.Require().False(r.CI.GitLabCI)
 }
 
 func (s *RecipeTestSuite) TestLoadInvalidEnumValue() {
@@ -109,38 +104,40 @@ server:
 	s.Require().Contains(err.Error(), "allowed values: nethttp, chi, gin, echo, fiber")
 }
 
-func (s *RecipeTestSuite) TestLoadInvalidConfigurationFormat() {
-	path := s.writeRecipe(`version: v1
-project:
-  name: orders-web
-  module: github.com/acme/orders-web
-  type: web
-configuration:
-  format: ini
-`)
-
-	_, err := Load(path)
-
-	s.Require().Error(err)
-	s.Require().Contains(err.Error(), "configuration.format=ini is invalid")
-	s.Require().Contains(err.Error(), "allowed values: env, yaml, json, toml")
-}
-
-func (s *RecipeTestSuite) TestLoadInvalidLoggingProvider() {
+func (s *RecipeTestSuite) TestLoadRejectsLoggingProviderField() {
 	path := s.writeRecipe(`version: v1
 project:
   name: orders-web
   module: github.com/acme/orders-web
   type: web
 logging:
-  provider: apex
+  provider: slog
 `)
 
 	_, err := Load(path)
 
 	s.Require().Error(err)
-	s.Require().Contains(err.Error(), "logging.provider=apex is invalid")
-	s.Require().Contains(err.Error(), "allowed values: slog, zap, zerolog, logrus")
+	s.Require().Contains(err.Error(), `unknown logging field "provider"`)
+}
+
+func (s *RecipeTestSuite) TestLoadAcceptsLoggingFrameworks() {
+	for _, framework := range []string{LoggingFrameworkSlog, LoggingFrameworkZap, LoggingFrameworkZerolog, LoggingFrameworkLogrus} {
+		s.Run(framework, func() {
+			path := s.writeRecipe(`version: v1
+project:
+  name: orders-web
+  module: github.com/acme/orders-web
+  type: web
+logging:
+  framework: ` + framework + `
+`)
+
+			r, err := Load(path)
+
+			s.Require().NoError(err)
+			s.Require().Equal(framework, r.Logging.Framework)
+		})
+	}
 }
 
 func (s *RecipeTestSuite) TestLoadMissingModule() {
@@ -198,7 +195,6 @@ func (s *RecipeTestSuite) TestDatabasePresetsAreValid() {
 			s.Require().NoError(err)
 			s.Require().NoError(Validate(r))
 			s.Require().Equal(ProjectTypeWeb, r.Project.Type)
-			s.Require().Equal(ConfigurationFormatEnv, r.Configuration.Format)
 			s.Require().Equal(DatabaseMigrationsMigrate, r.Database.Migrations)
 		})
 	}
@@ -213,15 +209,11 @@ func (s *RecipeTestSuite) TestSaveUsesSnakeCaseYAMLKeys() {
 			Module: "github.com/acme/orders-web",
 			Type:   ProjectTypeWeb,
 		},
-		Configuration: ConfigurationConfig{
-			Format: ConfigurationFormatEnv,
-		},
 		Logging: LoggingConfig{
 			RequestLogging: true,
 		},
 		CI: CIConfig{
 			GitHubActions: true,
-			GitLabCI:      true,
 		},
 	}
 
@@ -231,20 +223,18 @@ func (s *RecipeTestSuite) TestSaveUsesSnakeCaseYAMLKeys() {
 	data, err := os.ReadFile(path)
 	s.Require().NoError(err)
 	output := string(data)
-	s.Require().Contains(output, "configuration:")
-	s.Require().Contains(output, "format: env")
 	s.Require().Contains(output, "graceful_shutdown:")
+	s.Require().Contains(output, "framework: slog")
 	s.Require().Contains(output, "request_logging:")
 	s.Require().Contains(output, "github_actions:")
-	s.Require().Contains(output, "gitlab_ci:")
 	s.Require().Contains(output, "version: v1\n\nproject:")
 	s.Require().Contains(output, "\nproject:\n  name:")
 	s.Require().Contains(output, "\nproject:\n  name: orders-web\n  module:")
 	s.Require().NotContains(output, "    name:")
 	s.Require().NotContains(output, "gracefulShutdown")
+	s.Require().NotContains(output, "provider:")
 	s.Require().NotContains(output, "requestLogging")
 	s.Require().NotContains(output, "githubActions")
-	s.Require().NotContains(output, "gitlabCI")
 }
 
 func (s *RecipeTestSuite) writeRecipe(contents string) string {

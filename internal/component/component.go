@@ -4,10 +4,10 @@ const (
 	CategoryProject           = "project"
 	CategoryLayout            = "layout"
 	CategoryServer            = "server"
+	CategoryConfiguration     = "configuration"
 	CategoryDatabase          = "database"
 	CategoryDatabaseFramework = "database.framework"
 	CategoryMigrations        = "migrations"
-	CategoryConfiguration     = "configuration"
 	CategoryLogging           = "logging"
 	CategoryObservability     = "observability"
 	CategoryDeployment        = "deployment"
@@ -25,6 +25,11 @@ const (
 	IDServerEcho    = "server.echo"
 	IDServerFiber   = "server.fiber"
 
+	IDConfigurationEnv  = "configuration.env"
+	IDConfigurationYAML = "configuration.yaml"
+	IDConfigurationJSON = "configuration.json"
+	IDConfigurationTOML = "configuration.toml"
+
 	IDDatabaseNone     = "database.none"
 	IDDatabasePostgres = "database.postgres"
 	IDDatabaseMySQL    = "database.mysql"
@@ -38,11 +43,6 @@ const (
 	IDMigrationsGoose   = "migrations.goose"
 	IDMigrationsMigrate = "migrations.migrate"
 
-	IDConfigurationEnv  = "configuration.env"
-	IDConfigurationYAML = "configuration.yaml"
-	IDConfigurationJSON = "configuration.json"
-	IDConfigurationTOML = "configuration.toml"
-
 	IDLoggingSlog    = "logging.slog"
 	IDLoggingZap     = "logging.zap"
 	IDLoggingZerolog = "logging.zerolog"
@@ -54,8 +54,7 @@ const (
 	IDDeploymentDocker  = "deployment.docker"
 	IDDeploymentCompose = "deployment.compose"
 
-	IDCIGitHubActions = "ci.github_actions"
-	IDCIGitLabCI      = "ci.gitlab_ci"
+	IDCIGitHubActions = "ci.github-actions"
 )
 
 type (

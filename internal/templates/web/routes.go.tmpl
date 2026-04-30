@@ -1,0 +1,188 @@
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+package app
+{{ else -}}
+package server
+{{ end }}
+
+{{ if eq .Recipe.Server.Framework "nethttp" -}}
+import (
+	"net/http"
+
+{{ if ne .Recipe.Layout.Style "minimal" -}}
+{{ if or .Recipe.Observability.Health .Recipe.Observability.Readiness -}}
+	"{{ .ModulePath }}/internal/server/handler"
+{{ end -}}
+	"{{ .ModulePath }}/internal/server/middleware"
+{{ end -}}
+)
+
+func (s *Server) routes() http.Handler {
+	mux := http.NewServeMux()
+{{ if .Recipe.Observability.Health }}
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+	mux.HandleFunc("/health", Health)
+{{ else -}}
+	mux.HandleFunc("/health", handler.Health)
+{{ end -}}
+{{ end -}}
+{{ if .Recipe.Observability.Readiness }}
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+	mux.HandleFunc("/ready", Ready)
+{{ else -}}
+	mux.HandleFunc("/ready", handler.Ready)
+{{ end -}}
+{{ end }}
+	var h http.Handler = mux
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+	h = Logging(s.logger)(h)
+	h = RequestID(h)
+{{ else -}}
+	h = middleware.Logging(s.logger)(h)
+	h = middleware.RequestID(h)
+{{ end -}}
+	return h
+}
+{{ end -}}
+{{ if eq .Recipe.Server.Framework "chi" -}}
+import (
+	"net/http"
+
+	"github.com/go-chi/chi/v5"
+{{ if ne .Recipe.Layout.Style "minimal" }}
+{{ if or .Recipe.Observability.Health .Recipe.Observability.Readiness -}}
+	"{{ .ModulePath }}/internal/server/handler"
+{{ end -}}
+	"{{ .ModulePath }}/internal/server/middleware"
+{{ end -}}
+)
+
+func (s *Server) routes() http.Handler {
+	router := chi.NewRouter()
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+	router.Use(RequestID)
+	router.Use(Logging(s.logger))
+{{ else -}}
+	router.Use(middleware.RequestID)
+	router.Use(middleware.Logging(s.logger))
+{{ end -}}
+{{ if .Recipe.Observability.Health }}
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+	router.Get("/health", Health)
+{{ else -}}
+	router.Get("/health", handler.Health)
+{{ end -}}
+{{ end -}}
+{{ if .Recipe.Observability.Readiness }}
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+	router.Get("/ready", Ready)
+{{ else -}}
+	router.Get("/ready", handler.Ready)
+{{ end -}}
+{{ end }}
+	return router
+}
+{{ end -}}
+{{ if eq .Recipe.Server.Framework "gin" -}}
+import (
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+{{ if ne .Recipe.Layout.Style "minimal" }}
+{{ if or .Recipe.Observability.Health .Recipe.Observability.Readiness -}}
+	"{{ .ModulePath }}/internal/server/handler"
+{{ end -}}
+	"{{ .ModulePath }}/internal/server/middleware"
+{{ end -}}
+)
+
+func (s *Server) routes() http.Handler {
+	gin.SetMode(gin.ReleaseMode)
+	router := gin.New()
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+	router.Use(RequestID(), Logging(s.logger))
+{{ else -}}
+	router.Use(middleware.RequestID(), middleware.Logging(s.logger))
+{{ end -}}
+{{ if .Recipe.Observability.Health }}
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+	router.GET("/health", Health)
+{{ else -}}
+	router.GET("/health", handler.Health)
+{{ end -}}
+{{ end -}}
+{{ if .Recipe.Observability.Readiness }}
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+	router.GET("/ready", Ready)
+{{ else -}}
+	router.GET("/ready", handler.Ready)
+{{ end -}}
+{{ end }}
+	return router
+}
+{{ end -}}
+{{ if eq .Recipe.Server.Framework "echo" -}}
+{{ if ne .Recipe.Layout.Style "minimal" -}}
+import (
+{{ if or .Recipe.Observability.Health .Recipe.Observability.Readiness -}}
+	"{{ .ModulePath }}/internal/server/handler"
+{{ end -}}
+	"{{ .ModulePath }}/internal/server/middleware"
+)
+{{ end }}
+func (s *Server) registerRoutes() {
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+	s.echo.Use(RequestID)
+	s.echo.Use(Logging(s.logger))
+{{ else -}}
+	s.echo.Use(middleware.RequestID)
+	s.echo.Use(middleware.Logging(s.logger))
+{{ end -}}
+{{ if .Recipe.Observability.Health }}
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+	s.echo.GET("/health", Health)
+{{ else -}}
+	s.echo.GET("/health", handler.Health)
+{{ end -}}
+{{ end -}}
+{{ if .Recipe.Observability.Readiness }}
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+	s.echo.GET("/ready", Ready)
+{{ else -}}
+	s.echo.GET("/ready", handler.Ready)
+{{ end -}}
+{{ end }}
+}
+{{ end -}}
+{{ if eq .Recipe.Server.Framework "fiber" -}}
+{{ if ne .Recipe.Layout.Style "minimal" -}}
+import (
+{{ if or .Recipe.Observability.Health .Recipe.Observability.Readiness -}}
+	"{{ .ModulePath }}/internal/server/handler"
+{{ end -}}
+	"{{ .ModulePath }}/internal/server/middleware"
+)
+{{ end }}
+func (s *Server) registerRoutes() {
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+	s.app.Use(RequestID)
+	s.app.Use(Logging(s.logger))
+{{ else -}}
+	s.app.Use(middleware.RequestID)
+	s.app.Use(middleware.Logging(s.logger))
+{{ end -}}
+{{ if .Recipe.Observability.Health }}
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+	s.app.Get("/health", Health)
+{{ else -}}
+	s.app.Get("/health", handler.Health)
+{{ end -}}
+{{ end -}}
+{{ if .Recipe.Observability.Readiness }}
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+	s.app.Get("/ready", Ready)
+{{ else -}}
+	s.app.Get("/ready", handler.Ready)
+{{ end -}}
+{{ end }}
+}
+{{ end -}}

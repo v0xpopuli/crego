@@ -1,0 +1,165 @@
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+package app
+{{ else -}}
+package logging
+{{ end }}
+
+{{ if eq .Recipe.Logging.Framework "slog" -}}
+import (
+	"log/slog"
+	"os"
+)
+
+type Logger struct {
+	inner *slog.Logger
+}
+
+func NewLogger(format string) (*Logger, error) {
+	var handler slog.Handler
+	if format == "json" {
+		handler = slog.NewJSONHandler(os.Stdout, nil)
+	} else {
+		handler = slog.NewTextHandler(os.Stdout, nil)
+	}
+	return &Logger{inner: slog.New(handler)}, nil
+}
+
+func (l *Logger) Info(message string, args ...any) {
+	l.inner.Info(message, args...)
+}
+
+func (l *Logger) Error(message string, args ...any) {
+	l.inner.Error(message, args...)
+}
+
+func (l *Logger) Sync() {}
+{{ end -}}
+{{ if eq .Recipe.Logging.Framework "zap" -}}
+import (
+	"os"
+
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+)
+
+type Logger struct {
+	inner *zap.SugaredLogger
+}
+
+func NewLogger(format string) (*Logger, error) {
+	encoderConfig := zap.NewProductionEncoderConfig()
+	encoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+
+	var encoder zapcore.Encoder
+	if format == "json" {
+		encoder = zapcore.NewJSONEncoder(encoderConfig)
+	} else {
+		encoder = zapcore.NewConsoleEncoder(encoderConfig)
+	}
+
+	core := zapcore.NewCore(encoder, zapcore.AddSync(os.Stdout), zapcore.InfoLevel)
+	return &Logger{inner: zap.New(core).Sugar()}, nil
+}
+
+func (l *Logger) Info(message string, args ...any) {
+	l.inner.Infow(message, args...)
+}
+
+func (l *Logger) Error(message string, args ...any) {
+	l.inner.Errorw(message, args...)
+}
+
+func (l *Logger) Sync() {
+	_ = l.inner.Sync()
+}
+{{ end -}}
+{{ if eq .Recipe.Logging.Framework "zerolog" -}}
+import (
+	"os"
+	"time"
+
+	"github.com/rs/zerolog"
+)
+
+type Logger struct {
+	inner zerolog.Logger
+}
+
+func NewLogger(format string) (*Logger, error) {
+	var logger zerolog.Logger
+	if format == "json" {
+		logger = zerolog.New(os.Stdout).With().Timestamp().Logger()
+	} else {
+		writer := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339}
+		logger = zerolog.New(writer).With().Timestamp().Logger()
+	}
+	return &Logger{inner: logger}, nil
+}
+
+func (l *Logger) Info(message string, args ...any) {
+	l.inner.Info().Fields(logFields(args...)).Msg(message)
+}
+
+func (l *Logger) Error(message string, args ...any) {
+	l.inner.Error().Fields(logFields(args...)).Msg(message)
+}
+
+func (l *Logger) Sync() {}
+
+func logFields(args ...any) map[string]any {
+	fields := make(map[string]any, len(args)/2)
+	for i := 0; i+1 < len(args); i += 2 {
+		key, ok := args[i].(string)
+		if !ok || key == "" {
+			continue
+		}
+		fields[key] = args[i+1]
+	}
+	return fields
+}
+{{ end -}}
+{{ if eq .Recipe.Logging.Framework "logrus" -}}
+import (
+	"os"
+
+	"github.com/sirupsen/logrus"
+)
+
+type Logger struct {
+	inner *logrus.Logger
+}
+
+func NewLogger(format string) (*Logger, error) {
+	logger := logrus.New()
+	logger.SetOutput(os.Stdout)
+	logger.SetLevel(logrus.InfoLevel)
+	if format == "json" {
+		logger.SetFormatter(&logrus.JSONFormatter{})
+	} else {
+		logger.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
+	}
+	return &Logger{inner: logger}, nil
+}
+
+func (l *Logger) Info(message string, args ...any) {
+	l.inner.WithFields(logFields(args...)).Info(message)
+}
+
+func (l *Logger) Error(message string, args ...any) {
+	l.inner.WithFields(logFields(args...)).Error(message)
+}
+
+func (l *Logger) Sync() {}
+
+func logFields(args ...any) logrus.Fields {
+	fields := make(logrus.Fields, len(args)/2)
+	for i := 0; i+1 < len(args); i += 2 {
+		key, ok := args[i].(string)
+		if !ok || key == "" {
+			continue
+		}
+		fields[key] = args[i+1]
+	}
+	return fields
+}
+{{ end -}}

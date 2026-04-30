@@ -108,6 +108,23 @@ func (s *GeneratorTestSuite) TestWritesNestedFilesWithRegularPermissions() {
 	s.Require().Equal(regularFileMode, info.Mode().Perm())
 }
 
+func (s *GeneratorTestSuite) TestFormatsGeneratedGoFiles() {
+	outDir := s.T().TempDir()
+	g := NewGenerator(fstest.MapFS{
+		"main.go.tmpl": &fstest.MapFile{Data: []byte("package main\nfunc main(){println(\"ok\")}\n")},
+	})
+	plan := &Plan{Files: []component.TemplateFile{{Source: "main.go.tmpl", Target: "cmd/{{ .ProjectName }}/main.go"}}}
+
+	result, err := g.Generate(context.Background(), generatorTestRecipe(), plan, Options{OutDir: outDir})
+
+	s.Require().NoError(err)
+	s.Require().Equal([]string{"cmd/example/main.go"}, result.FilesWritten)
+
+	content, err := os.ReadFile(filepath.Join(outDir, "cmd", "example", "main.go"))
+	s.Require().NoError(err)
+	s.Require().Equal("package main\n\nfunc main() { println(\"ok\") }\n", string(content))
+}
+
 func (s *GeneratorTestSuite) TestRejectsNonEmptyOutputDirectoryWithoutForce() {
 	outDir := s.T().TempDir()
 	s.Require().NoError(os.WriteFile(filepath.Join(outDir, "existing.txt"), []byte("keep"), 0o644))

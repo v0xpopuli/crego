@@ -1,0 +1,166 @@
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+package app
+{{ else -}}
+package server
+{{ end }}
+
+{{ if or (eq .Recipe.Server.Framework "nethttp") (eq .Recipe.Server.Framework "chi") (eq .Recipe.Server.Framework "gin") -}}
+import (
+	"context"
+	"errors"
+	"net/http"
+	"strconv"
+	"time"
+
+{{ if ne .Recipe.Layout.Style "minimal" -}}
+	"{{ .ModulePath }}/internal/config"
+	"{{ .ModulePath }}/internal/logging"
+{{ end -}}
+)
+
+type Server struct {
+	httpServer *http.Server
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+	logger     *Logger
+{{ else -}}
+	logger     *logging.Logger
+{{ end -}}
+}
+
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+func NewServer(cfg Config, logger *Logger) *Server {
+{{ else -}}
+func NewServer(cfg config.Config, logger *logging.Logger) *Server {
+{{ end -}}
+	srv := &Server{logger: logger}
+	srv.httpServer = &http.Server{
+		Addr:              ":" + strconv.Itoa(cfg.HTTPPort),
+		Handler:           srv.routes(),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	return srv
+}
+
+func (s *Server) Addr() string {
+	return s.httpServer.Addr
+}
+
+func (s *Server) Start() error {
+	err := s.httpServer.ListenAndServe()
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return err
+}
+
+func (s *Server) Shutdown(ctx context.Context) error {
+	return s.httpServer.Shutdown(ctx)
+}
+{{ end -}}
+{{ if eq .Recipe.Server.Framework "echo" -}}
+import (
+	"context"
+	"errors"
+	"net/http"
+	"strconv"
+
+	"github.com/labstack/echo/v4"
+{{ if ne .Recipe.Layout.Style "minimal" }}
+	"{{ .ModulePath }}/internal/config"
+	"{{ .ModulePath }}/internal/logging"
+{{ end -}}
+)
+
+type Server struct {
+	echo   *echo.Echo
+	addr   string
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+	logger *Logger
+{{ else -}}
+	logger *logging.Logger
+{{ end -}}
+}
+
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+func NewServer(cfg Config, logger *Logger) *Server {
+{{ else -}}
+func NewServer(cfg config.Config, logger *logging.Logger) *Server {
+{{ end -}}
+	e := echo.New()
+	e.HideBanner = true
+	e.HidePort = true
+	srv := &Server{
+		echo:   e,
+		addr:   ":" + strconv.Itoa(cfg.HTTPPort),
+		logger: logger,
+	}
+	srv.registerRoutes()
+	return srv
+}
+
+func (s *Server) Addr() string {
+	return s.addr
+}
+
+func (s *Server) Start() error {
+	err := s.echo.Start(s.addr)
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return err
+}
+
+func (s *Server) Shutdown(ctx context.Context) error {
+	return s.echo.Shutdown(ctx)
+}
+{{ end -}}
+{{ if eq .Recipe.Server.Framework "fiber" -}}
+import (
+	"context"
+	"strconv"
+
+	"github.com/gofiber/fiber/v2"
+{{ if ne .Recipe.Layout.Style "minimal" }}
+	"{{ .ModulePath }}/internal/config"
+	"{{ .ModulePath }}/internal/logging"
+{{ end -}}
+)
+
+type Server struct {
+	app    *fiber.App
+	addr   string
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+	logger *Logger
+{{ else -}}
+	logger *logging.Logger
+{{ end -}}
+}
+
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+func NewServer(cfg Config, logger *Logger) *Server {
+{{ else -}}
+func NewServer(cfg config.Config, logger *logging.Logger) *Server {
+{{ end -}}
+	srv := &Server{
+		app: fiber.New(fiber.Config{
+			DisableStartupMessage: true,
+		}),
+		addr:   ":" + strconv.Itoa(cfg.HTTPPort),
+		logger: logger,
+	}
+	srv.registerRoutes()
+	return srv
+}
+
+func (s *Server) Addr() string {
+	return s.addr
+}
+
+func (s *Server) Start() error {
+	return s.app.Listen(s.addr)
+}
+
+func (s *Server) Shutdown(ctx context.Context) error {
+	return s.app.ShutdownWithContext(ctx)
+}
+{{ end -}}

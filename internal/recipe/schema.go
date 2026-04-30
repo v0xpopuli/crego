@@ -24,6 +24,11 @@ const (
 	ServerFrameworkEcho    = "echo"
 	ServerFrameworkFiber   = "fiber"
 
+	ConfigurationFormatEnv  = "env"
+	ConfigurationFormatYAML = "yaml"
+	ConfigurationFormatJSON = "json"
+	ConfigurationFormatTOML = "toml"
+
 	DatabaseDriverNone     = "none"
 	DatabaseDriverPostgres = "postgres"
 	DatabaseDriverMySQL    = "mysql"
@@ -38,15 +43,10 @@ const (
 	DatabaseMigrationsGoose   = "goose"
 	DatabaseMigrationsMigrate = "migrate"
 
-	ConfigurationFormatEnv  = "env"
-	ConfigurationFormatYAML = "yaml"
-	ConfigurationFormatJSON = "json"
-	ConfigurationFormatTOML = "toml"
-
-	LoggingProviderSlog    = "slog"
-	LoggingProviderZap     = "zap"
-	LoggingProviderZerolog = "zerolog"
-	LoggingProviderLogrus  = "logrus"
+	LoggingFrameworkSlog    = "slog"
+	LoggingFrameworkZap     = "zap"
+	LoggingFrameworkZerolog = "zerolog"
+	LoggingFrameworkLogrus  = "logrus"
 
 	LoggingFormatText = "text"
 	LoggingFormatJSON = "json"
@@ -65,8 +65,8 @@ type (
 		Go            GoConfig            `yaml:"go"`
 		Layout        LayoutConfig        `yaml:"layout"`
 		Server        ServerConfig        `yaml:"server,omitempty"`
-		Database      DatabaseConfig      `yaml:"database"`
 		Configuration ConfigurationConfig `yaml:"configuration"`
+		Database      DatabaseConfig      `yaml:"database"`
 		Logging       LoggingConfig       `yaml:"logging"`
 		Observability ObservabilityConfig `yaml:"observability"`
 		Deployment    DeploymentConfig    `yaml:"deployment"`
@@ -95,18 +95,18 @@ type (
 		gracefulShutdownSet bool
 	}
 
+	ConfigurationConfig struct {
+		Format string `yaml:"format"`
+	}
+
 	DatabaseConfig struct {
 		Driver     string `yaml:"driver"`
 		Framework  string `yaml:"framework"`
 		Migrations string `yaml:"migrations"`
 	}
 
-	ConfigurationConfig struct {
-		Format string `yaml:"format"`
-	}
-
 	LoggingConfig struct {
-		Provider       string `yaml:"provider"`
+		Framework      string `yaml:"framework"`
 		Format         string `yaml:"format"`
 		RequestLogging bool   `yaml:"request_logging"`
 	}
@@ -125,9 +125,6 @@ type (
 
 	CIConfig struct {
 		GitHubActions bool `yaml:"github_actions"`
-		GitLabCI      bool `yaml:"gitlab_ci"`
-
-		githubActionsSet bool
 	}
 )
 
@@ -151,22 +148,21 @@ func (c *ServerConfig) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
-func (c *CIConfig) UnmarshalYAML(value *yaml.Node) error {
+func (c *LoggingConfig) UnmarshalYAML(value *yaml.Node) error {
 	for _, key := range yamlMappingKeys(value) {
 		switch key {
-		case "github_actions", "gitlab_ci":
+		case "framework", "format", "request_logging":
 		default:
-			return fmt.Errorf("unknown ci field %q", key)
+			return fmt.Errorf("unknown logging field %q", key)
 		}
 	}
 
-	type ciConfig CIConfig
-	var decoded ciConfig
+	type loggingConfig LoggingConfig
+	var decoded loggingConfig
 	if err := value.Decode(&decoded); err != nil {
 		return err
 	}
 
-	*c = CIConfig(decoded)
-	c.githubActionsSet = yamlMappingContains(value, "github_actions")
+	*c = LoggingConfig(decoded)
 	return nil
 }

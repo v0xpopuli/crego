@@ -1,0 +1,10 @@
+module {{ .ModulePath }}
+
+go {{ .Recipe.Go.Version }}
+{{ if .GoModules }}
+require (
+{{- range .GoModules }}
+	{{ .Path }} {{ .Version }}
+{{- end }}
+)
+{{ end }}

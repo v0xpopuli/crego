@@ -20,6 +20,7 @@ var componentCategoryOrder = []string{
 	component.CategoryLayout,
 	component.CategoryConfiguration,
 	component.CategoryServer,
+	component.CategoryConfiguration,
 	component.CategoryDatabase,
 	component.CategoryMigrations,
 	component.CategoryLogging,

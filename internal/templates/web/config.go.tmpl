@@ -1,0 +1,114 @@
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+package app
+{{ else -}}
+package config
+{{ end }}
+
+import (
+{{ if eq .Recipe.Configuration.Format "json" -}}
+	"encoding/json"
+{{ end -}}
+	"fmt"
+	"os"
+	"strconv"
+
+{{ if eq .Recipe.Configuration.Format "toml" -}}
+	"github.com/pelletier/go-toml/v2"
+{{ end -}}
+{{ if eq .Recipe.Configuration.Format "yaml" -}}
+	"gopkg.in/yaml.v3"
+{{ end -}}
+)
+
+type Config struct {
+	AppEnv    string `json:"app_env" toml:"app_env" yaml:"app_env"`
+	HTTPPort  int    `json:"http_port" toml:"http_port" yaml:"http_port"`
+	LogFormat string `json:"log_format" toml:"log_format" yaml:"log_format"`
+}
+
+type ConfigOptions struct {
+	Path string
+}
+
+func LoadConfig(opts ConfigOptions) (Config, error) {
+	cfg := defaultConfig()
+{{ if eq .Recipe.Configuration.Format "env" }}
+	_ = opts
+{{ else }}
+	path := resolveConfigPath(opts.Path, "configs/config.{{ .Recipe.Configuration.Format }}")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return Config{}, fmt.Errorf("read config %q: %w", path, err)
+	}
+{{ if eq .Recipe.Configuration.Format "json" }}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return Config{}, fmt.Errorf("decode config %q: %w", path, err)
+	}
+{{ end -}}
+{{ if eq .Recipe.Configuration.Format "toml" }}
+	if err := toml.Unmarshal(data, &cfg); err != nil {
+		return Config{}, fmt.Errorf("decode config %q: %w", path, err)
+	}
+{{ end -}}
+{{ if eq .Recipe.Configuration.Format "yaml" }}
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return Config{}, fmt.Errorf("decode config %q: %w", path, err)
+	}
+{{ end -}}
+{{ end }}
+	if err := applyEnvOverrides(&cfg); err != nil {
+		return Config{}, err
+	}
+	if err := validateConfig(cfg); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
+func defaultConfig() Config {
+	return Config{
+		AppEnv:    "development",
+		HTTPPort:  {{ .Recipe.Server.Port }},
+		LogFormat: "{{ .Recipe.Logging.Format }}",
+	}
+}
+{{ if ne .Recipe.Configuration.Format "env" }}
+func resolveConfigPath(explicit string, fallback string) string {
+	if explicit != "" {
+		return explicit
+	}
+	if value := os.Getenv("CONFIG_PATH"); value != "" {
+		return value
+	}
+	return fallback
+}
+{{ end }}
+func applyEnvOverrides(cfg *Config) error {
+	if value := os.Getenv("APP_ENV"); value != "" {
+		cfg.AppEnv = value
+	}
+	if value := os.Getenv("HTTP_PORT"); value != "" {
+		port, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("parse HTTP_PORT: %w", err)
+		}
+		cfg.HTTPPort = port
+	}
+	if value := os.Getenv("LOG_FORMAT"); value != "" {
+		cfg.LogFormat = value
+	}
+	return nil
+}
+
+func validateConfig(cfg Config) error {
+	if cfg.AppEnv == "" {
+		return fmt.Errorf("app_env is required")
+	}
+	if cfg.HTTPPort < 1 || cfg.HTTPPort > 65535 {
+		return fmt.Errorf("http_port must be between 1 and 65535")
+	}
+	if cfg.LogFormat != "text" && cfg.LogFormat != "json" {
+		return fmt.Errorf("log_format must be text or json")
+	}
+	return nil
+}

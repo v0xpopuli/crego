@@ -50,8 +50,8 @@ func (r *Registry) Get(id string) (Component, bool) {
 
 func defaultComponents() []Component {
 	serverConflicts := []string{IDServerNetHTTP, IDServerChi, IDServerGin, IDServerEcho, IDServerFiber}
-	databaseConflicts := []string{IDDatabaseNone, IDDatabasePostgres, IDDatabaseMySQL, IDDatabaseSQLite}
 	configurationConflicts := []string{IDConfigurationEnv, IDConfigurationYAML, IDConfigurationJSON, IDConfigurationTOML}
+	databaseConflicts := []string{IDDatabaseNone, IDDatabasePostgres, IDDatabaseMySQL, IDDatabaseSQLite}
 	loggingConflicts := []string{IDLoggingSlog, IDLoggingZap, IDLoggingZerolog, IDLoggingLogrus}
 
 	return []Component{
@@ -60,7 +60,19 @@ func defaultComponents() []Component {
 			Category:    CategoryProject,
 			Name:        "Web project",
 			Description: "HTTP service project scaffold.",
-			Files:       []TemplateFile{{Source: "project/README.md.tmpl", Target: "README.md"}},
+			Files: []TemplateFile{
+				{Source: "web/go.mod.tmpl", Target: "go.mod"},
+				{Source: "web/README.md.tmpl", Target: "README.md"},
+				{Source: "web/Makefile.tmpl", Target: "Makefile"},
+				{Source: "web/main.go.tmpl", Target: "cmd/{{ .ProjectName }}/main.go"},
+				{Source: "web/app.go.tmpl", Target: "internal/app/app.go"},
+				{Source: "web/config.go.tmpl", Target: "{{ if eq .Recipe.Layout.Style \"minimal\" }}internal/app/config.go{{ else }}internal/config/config.go{{ end }}"},
+				{Source: "web/logger.go.tmpl", Target: "{{ if eq .Recipe.Layout.Style \"minimal\" }}internal/app/logger.go{{ else }}internal/logging/logger.go{{ end }}"},
+				{Source: "web/server.go.tmpl", Target: "{{ if eq .Recipe.Layout.Style \"minimal\" }}internal/app/server.go{{ else }}internal/server/server.go{{ end }}"},
+				{Source: "web/routes.go.tmpl", Target: "{{ if eq .Recipe.Layout.Style \"minimal\" }}internal/app/routes.go{{ else }}internal/server/routes.go{{ end }}"},
+				{Source: "web/request_id.go.tmpl", Target: "{{ if eq .Recipe.Layout.Style \"minimal\" }}internal/app/request_id.go{{ else }}internal/server/middleware/request_id.go{{ end }}"},
+				{Source: "web/logging_middleware.go.tmpl", Target: "{{ if eq .Recipe.Layout.Style \"minimal\" }}internal/app/logging.go{{ else }}internal/server/middleware/logging.go{{ end }}"},
+			},
 		},
 		{
 			ID:          IDProjectCLI,
@@ -81,11 +93,15 @@ func defaultComponents() []Component {
 			Name:        "Layered layout",
 			Description: "Layered project layout for separated application concerns.",
 		},
-		serverComponent(IDServerNetHTTP, "net/http server", "HTTP server built with the Go standard library.", without(serverConflicts, IDServerNetHTTP)),
-		serverComponent(IDServerChi, "Chi server", "HTTP server built with chi.", without(serverConflicts, IDServerChi)),
-		serverComponent(IDServerGin, "Gin server", "HTTP server built with Gin.", without(serverConflicts, IDServerGin)),
-		serverComponent(IDServerEcho, "Echo server", "HTTP server built with Echo.", without(serverConflicts, IDServerEcho)),
-		serverComponent(IDServerFiber, "Fiber server", "HTTP server built with Fiber.", without(serverConflicts, IDServerFiber)),
+		serverComponent(IDServerNetHTTP, "net/http server", "HTTP server built with the Go standard library.", without(serverConflicts, IDServerNetHTTP), nil),
+		serverComponent(IDServerChi, "Chi server", "HTTP server built with chi.", without(serverConflicts, IDServerChi), []GoModule{{Path: "github.com/go-chi/chi/v5", Version: "v5.2.5"}}),
+		serverComponent(IDServerGin, "Gin server", "HTTP server built with Gin.", without(serverConflicts, IDServerGin), []GoModule{{Path: "github.com/gin-gonic/gin", Version: "v1.12.0"}}),
+		serverComponent(IDServerEcho, "Echo server", "HTTP server built with Echo.", without(serverConflicts, IDServerEcho), []GoModule{{Path: "github.com/labstack/echo/v4", Version: "v4.15.1"}}),
+		serverComponent(IDServerFiber, "Fiber server", "HTTP server built with Fiber.", without(serverConflicts, IDServerFiber), []GoModule{{Path: "github.com/gofiber/fiber/v2", Version: "v2.52.12"}}),
+		configurationComponent(IDConfigurationEnv, "Environment configuration", "Configuration loaded from environment variables.", without(configurationConflicts, IDConfigurationEnv), nil, nil),
+		configurationComponent(IDConfigurationYAML, "YAML configuration", "Configuration loaded from a YAML file with environment overrides.", without(configurationConflicts, IDConfigurationYAML), []TemplateFile{{Source: "web/config.yaml.tmpl", Target: "configs/config.yaml"}}, []GoModule{{Path: "gopkg.in/yaml.v3", Version: "v3.0.1"}}),
+		configurationComponent(IDConfigurationJSON, "JSON configuration", "Configuration loaded from a JSON file with environment overrides.", without(configurationConflicts, IDConfigurationJSON), []TemplateFile{{Source: "web/config.json.tmpl", Target: "configs/config.json"}}, nil),
+		configurationComponent(IDConfigurationTOML, "TOML configuration", "Configuration loaded from a TOML file with environment overrides.", without(configurationConflicts, IDConfigurationTOML), []TemplateFile{{Source: "web/config.toml.tmpl", Target: "configs/config.toml"}}, []GoModule{{Path: "github.com/pelletier/go-toml/v2", Version: "v2.3.0"}}),
 		databaseComponent(IDDatabaseNone, "No database", "Project without a database integration.", without(databaseConflicts, IDDatabaseNone)),
 		databaseComponent(IDDatabasePostgres, "Postgres database", "PostgreSQL database integration.", without(databaseConflicts, IDDatabasePostgres)),
 		databaseComponent(IDDatabaseMySQL, "MySQL database", "MySQL database integration.", without(databaseConflicts, IDDatabaseMySQL)),
@@ -130,25 +146,50 @@ func defaultComponents() []Component {
 			Description: "Database migrations through golang-migrate.",
 			Conflicts:   []string{IDMigrationsNone, IDMigrationsGoose},
 		},
-		configurationComponent(IDConfigurationEnv, "Environment configuration", "Configuration loaded from environment variables.", without(configurationConflicts, IDConfigurationEnv)),
-		configurationComponent(IDConfigurationYAML, "YAML configuration", "Configuration loaded from YAML files.", without(configurationConflicts, IDConfigurationYAML)),
-		configurationComponent(IDConfigurationJSON, "JSON configuration", "Configuration loaded from JSON files.", without(configurationConflicts, IDConfigurationJSON)),
-		configurationComponent(IDConfigurationTOML, "TOML configuration", "Configuration loaded from TOML files.", without(configurationConflicts, IDConfigurationTOML)),
-		loggingComponent(IDLoggingSlog, "slog logging", "Structured logging through the Go standard library slog package.", without(loggingConflicts, IDLoggingSlog)),
-		loggingComponent(IDLoggingZap, "Zap logging", "Structured logging through zap.", without(loggingConflicts, IDLoggingZap)),
-		loggingComponent(IDLoggingZerolog, "Zerolog logging", "Structured logging through zerolog.", without(loggingConflicts, IDLoggingZerolog)),
-		loggingComponent(IDLoggingLogrus, "Logrus logging", "Structured logging through logrus.", without(loggingConflicts, IDLoggingLogrus)),
+		{
+			ID:          IDLoggingSlog,
+			Category:    CategoryLogging,
+			Name:        "slog logging",
+			Description: "Structured logging through the Go standard library slog package.",
+			Conflicts:   without(loggingConflicts, IDLoggingSlog),
+		},
+		{
+			ID:          IDLoggingZap,
+			Category:    CategoryLogging,
+			Name:        "zap logging",
+			Description: "Structured logging through go.uber.org/zap.",
+			Conflicts:   without(loggingConflicts, IDLoggingZap),
+			GoModules:   []GoModule{{Path: "go.uber.org/zap", Version: "v1.27.1"}},
+		},
+		{
+			ID:          IDLoggingZerolog,
+			Category:    CategoryLogging,
+			Name:        "zerolog logging",
+			Description: "Structured logging through github.com/rs/zerolog.",
+			Conflicts:   without(loggingConflicts, IDLoggingZerolog),
+			GoModules:   []GoModule{{Path: "github.com/rs/zerolog", Version: "v1.35.0"}},
+		},
+		{
+			ID:          IDLoggingLogrus,
+			Category:    CategoryLogging,
+			Name:        "logrus logging",
+			Description: "Structured logging through github.com/sirupsen/logrus.",
+			Conflicts:   without(loggingConflicts, IDLoggingLogrus),
+			GoModules:   []GoModule{{Path: "github.com/sirupsen/logrus", Version: "v1.9.4"}},
+		},
 		{
 			ID:          IDObservabilityHealth,
 			Category:    CategoryObservability,
 			Name:        "Health endpoint",
 			Description: "Basic health endpoint.",
+			Files:       []TemplateFile{{Source: "web/health.go.tmpl", Target: "{{ if eq .Recipe.Layout.Style \"minimal\" }}internal/app/health.go{{ else }}internal/server/handler/health.go{{ end }}"}},
 		},
 		{
 			ID:          IDObservabilityReadiness,
 			Category:    CategoryObservability,
 			Name:        "Readiness endpoint",
 			Description: "Readiness endpoint for dependency checks.",
+			Files:       []TemplateFile{{Source: "web/ready.go.tmpl", Target: "{{ if eq .Recipe.Layout.Style \"minimal\" }}internal/app/ready.go{{ else }}internal/server/handler/ready.go{{ end }}"}},
 		},
 		{
 			ID:          IDDeploymentDocker,
@@ -169,16 +210,10 @@ func defaultComponents() []Component {
 			Name:        "GitHub Actions",
 			Description: "GitHub Actions workflow.",
 		},
-		{
-			ID:          IDCIGitLabCI,
-			Category:    CategoryCI,
-			Name:        "GitLab CI",
-			Description: "GitLab CI pipeline.",
-		},
 	}
 }
 
-func serverComponent(id string, name string, description string, conflicts []string) Component {
+func serverComponent(id string, name string, description string, conflicts []string, modules []GoModule) Component {
 	return Component{
 		ID:          id,
 		Category:    CategoryServer,
@@ -186,6 +221,19 @@ func serverComponent(id string, name string, description string, conflicts []str
 		Description: description,
 		Requires:    []string{IDProjectWeb},
 		Conflicts:   conflicts,
+		GoModules:   modules,
+	}
+}
+
+func configurationComponent(id string, name string, description string, conflicts []string, files []TemplateFile, modules []GoModule) Component {
+	return Component{
+		ID:          id,
+		Category:    CategoryConfiguration,
+		Name:        name,
+		Description: description,
+		Conflicts:   conflicts,
+		Files:       files,
+		GoModules:   modules,
 	}
 }
 
@@ -193,26 +241,6 @@ func databaseComponent(id string, name string, description string, conflicts []s
 	return Component{
 		ID:          id,
 		Category:    CategoryDatabase,
-		Name:        name,
-		Description: description,
-		Conflicts:   conflicts,
-	}
-}
-
-func configurationComponent(id string, name string, description string, conflicts []string) Component {
-	return Component{
-		ID:          id,
-		Category:    CategoryConfiguration,
-		Name:        name,
-		Description: description,
-		Conflicts:   conflicts,
-	}
-}
-
-func loggingComponent(id string, name string, description string, conflicts []string) Component {
-	return Component{
-		ID:          id,
-		Category:    CategoryLogging,
 		Name:        name,
 		Description: description,
 		Conflicts:   conflicts,
