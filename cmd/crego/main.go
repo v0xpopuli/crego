@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/v0xpopuli/crego/internal/cli"
@@ -20,6 +21,9 @@ func main() {
 	})
 
 	if err := root.Execute(); err != nil {
-		os.Exit(1)
+		if cli.ShouldPrintError(err) {
+			_, _ = fmt.Fprintln(os.Stderr, err)
+		}
+		os.Exit(cli.ExitCode(err))
 	}
 }

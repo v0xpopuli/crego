@@ -155,7 +155,7 @@ func (s *RecipeTestSuite) TestDatabasePresetsAreValid() {
 			s.Require().NoError(err)
 			s.Require().NoError(Validate(r))
 			s.Require().Equal(ProjectTypeWeb, r.Project.Type)
-			s.Require().Equal(DatabaseMigrationsGoose, r.Database.Migrations)
+			s.Require().Equal(DatabaseMigrationsMigrate, r.Database.Migrations)
 		})
 	}
 }
@@ -186,6 +186,10 @@ func (s *RecipeTestSuite) TestSaveUsesSnakeCaseYAMLKeys() {
 	s.Require().Contains(output, "graceful_shutdown:")
 	s.Require().Contains(output, "request_logging:")
 	s.Require().Contains(output, "github_actions:")
+	s.Require().Contains(output, "version: v1\n\nproject:")
+	s.Require().Contains(output, "\nproject:\n  name:")
+	s.Require().Contains(output, "\nproject:\n  name: orders-web\n  module:")
+	s.Require().NotContains(output, "    name:")
 	s.Require().NotContains(output, "gracefulShutdown")
 	s.Require().NotContains(output, "requestLogging")
 	s.Require().NotContains(output, "githubActions")

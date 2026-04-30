@@ -25,7 +25,65 @@ type (
 		Debug   bool
 		Config  string
 	}
+
+	exitCoder interface {
+		ExitCode() int
+	}
+
+	commandError struct {
+		err      error
+		exitCode int
+		handled  bool
+	}
 )
+
+func (e commandError) Error() string {
+	return e.err.Error()
+}
+
+func (e commandError) Unwrap() error {
+	return e.err
+}
+
+func (e commandError) ExitCode() int {
+	return e.exitCode
+}
+
+func commandErrorWithExitCode(err error, exitCode int) error {
+	return &commandError{
+		err:      err,
+		exitCode: exitCode,
+		handled:  true,
+	}
+}
+
+// ExitCode returns the process exit code represented by err.
+func ExitCode(err error) int {
+	if err == nil {
+		return 0
+	}
+
+	var coder exitCoder
+	if errors.As(err, &coder) {
+		return coder.ExitCode()
+	}
+
+	return 1
+}
+
+// ShouldPrintError reports whether the caller should render err after command execution.
+func ShouldPrintError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var commandErr *commandError
+	if errors.As(err, &commandErr) && commandErr.handled {
+		return false
+	}
+
+	return true
+}
 
 func normalizeVersionInfo(info VersionInfo) VersionInfo {
 	if info.Version == "" {
@@ -60,11 +118,12 @@ Generation, recipe schema, and component registry behavior will be added in late
 		Example: `  crego new
   crego configure
   crego generate --config crego.yaml
-  crego recipe validate --config crego.yaml
+  crego recipe validate crego.yaml
   crego components list
   crego version`,
-		SilenceUsage: true,
-		Version:      versionInfo.Version,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Version:       versionInfo.Version,
 	}
 	cmd.SetOut(out)
 	cmd.SetErr(errOut)
@@ -78,7 +137,7 @@ Generation, recipe schema, and component registry behavior will be added in late
 		newNewCommand(out),
 		newConfigureCommand(out),
 		newGenerateCommand(out),
-		newRecipeCommand(out),
+		newRecipeCommand(out, errOut),
 		newComponentsCommand(out),
 		newExplainCommand(out),
 		newDoctorCommand(out),
