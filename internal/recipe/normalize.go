@@ -17,6 +17,7 @@ func Normalize(r *Recipe) *Recipe {
 	r.Database.Driver = normalizeEnum(r.Database.Driver)
 	r.Database.Framework = normalizeEnum(r.Database.Framework)
 	r.Database.Migrations = normalizeEnum(r.Database.Migrations)
+	r.Configuration.Format = normalizeEnum(r.Configuration.Format)
 	r.Logging.Provider = normalizeEnum(r.Logging.Provider)
 	r.Logging.Format = normalizeEnum(r.Logging.Format)
 

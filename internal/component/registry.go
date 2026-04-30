@@ -51,6 +51,8 @@ func (r *Registry) Get(id string) (Component, bool) {
 func defaultComponents() []Component {
 	serverConflicts := []string{IDServerNetHTTP, IDServerChi, IDServerGin, IDServerEcho, IDServerFiber}
 	databaseConflicts := []string{IDDatabaseNone, IDDatabasePostgres, IDDatabaseMySQL, IDDatabaseSQLite}
+	configurationConflicts := []string{IDConfigurationEnv, IDConfigurationYAML, IDConfigurationJSON, IDConfigurationTOML}
+	loggingConflicts := []string{IDLoggingSlog, IDLoggingZap, IDLoggingZerolog, IDLoggingLogrus}
 
 	return []Component{
 		{
@@ -126,12 +128,14 @@ func defaultComponents() []Component {
 			Description: "Database migrations through golang-migrate.",
 			Conflicts:   []string{IDMigrationsNone, IDMigrationsGoose},
 		},
-		{
-			ID:          IDLoggingSlog,
-			Category:    CategoryLogging,
-			Name:        "slog logging",
-			Description: "Structured logging through the Go standard library slog package.",
-		},
+		configurationComponent(IDConfigurationEnv, "Environment configuration", "Configuration loaded from environment variables.", without(configurationConflicts, IDConfigurationEnv)),
+		configurationComponent(IDConfigurationYAML, "YAML configuration", "Configuration loaded from YAML files.", without(configurationConflicts, IDConfigurationYAML)),
+		configurationComponent(IDConfigurationJSON, "JSON configuration", "Configuration loaded from JSON files.", without(configurationConflicts, IDConfigurationJSON)),
+		configurationComponent(IDConfigurationTOML, "TOML configuration", "Configuration loaded from TOML files.", without(configurationConflicts, IDConfigurationTOML)),
+		loggingComponent(IDLoggingSlog, "slog logging", "Structured logging through the Go standard library slog package.", without(loggingConflicts, IDLoggingSlog)),
+		loggingComponent(IDLoggingZap, "Zap logging", "Structured logging through zap.", without(loggingConflicts, IDLoggingZap)),
+		loggingComponent(IDLoggingZerolog, "Zerolog logging", "Structured logging through zerolog.", without(loggingConflicts, IDLoggingZerolog)),
+		loggingComponent(IDLoggingLogrus, "Logrus logging", "Structured logging through logrus.", without(loggingConflicts, IDLoggingLogrus)),
 		{
 			ID:          IDObservabilityHealth,
 			Category:    CategoryObservability,
@@ -163,6 +167,12 @@ func defaultComponents() []Component {
 			Name:        "GitHub Actions",
 			Description: "GitHub Actions workflow.",
 		},
+		{
+			ID:          IDCIGitLabCI,
+			Category:    CategoryCI,
+			Name:        "GitLab CI",
+			Description: "GitLab CI pipeline.",
+		},
 	}
 }
 
@@ -181,6 +191,26 @@ func databaseComponent(id string, name string, description string, conflicts []s
 	return Component{
 		ID:          id,
 		Category:    CategoryDatabase,
+		Name:        name,
+		Description: description,
+		Conflicts:   conflicts,
+	}
+}
+
+func configurationComponent(id string, name string, description string, conflicts []string) Component {
+	return Component{
+		ID:          id,
+		Category:    CategoryConfiguration,
+		Name:        name,
+		Description: description,
+		Conflicts:   conflicts,
+	}
+}
+
+func loggingComponent(id string, name string, description string, conflicts []string) Component {
+	return Component{
+		ID:          id,
+		Category:    CategoryLogging,
 		Name:        name,
 		Description: description,
 		Conflicts:   conflicts,

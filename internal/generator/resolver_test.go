@@ -39,6 +39,7 @@ func (s *ResolverTestSuite) TestResolveWebChiPostgresGoose() {
 		component.IDDatabasePostgres,
 		component.IDDatabaseFrameworkPGX,
 		component.IDMigrationsGoose,
+		component.IDConfigurationEnv,
 		component.IDLoggingSlog,
 		component.IDObservabilityHealth,
 		component.IDObservabilityReadiness,
@@ -63,7 +64,9 @@ func (s *ResolverTestSuite) TestResolveWebGinMySQL() {
 		component.IDDatabaseMySQL,
 		component.IDDatabaseFrameworkSQL,
 		component.IDMigrationsNone,
+		component.IDConfigurationEnv,
 		component.IDLoggingSlog,
+		component.IDCIGitHubActions,
 	}, planComponentIDs(plan))
 }
 
@@ -82,7 +85,9 @@ func (s *ResolverTestSuite) TestResolveWebNetHTTPSQLite() {
 		component.IDDatabaseSQLite,
 		component.IDDatabaseFrameworkSQL,
 		component.IDMigrationsNone,
+		component.IDConfigurationEnv,
 		component.IDLoggingSlog,
+		component.IDCIGitHubActions,
 	}, planComponentIDs(plan))
 }
 
@@ -97,8 +102,63 @@ func (s *ResolverTestSuite) TestResolveCLIBasic() {
 		component.IDLayoutMinimal,
 		component.IDDatabaseNone,
 		component.IDMigrationsNone,
+		component.IDConfigurationEnv,
 		component.IDLoggingSlog,
+		component.IDCIGitHubActions,
 	}, planComponentIDs(plan))
+}
+
+func (s *ResolverTestSuite) TestResolveConfigurationFormats() {
+	for _, tc := range []struct {
+		format      string
+		componentID string
+	}{
+		{format: recipe.ConfigurationFormatYAML, componentID: component.IDConfigurationYAML},
+		{format: recipe.ConfigurationFormatJSON, componentID: component.IDConfigurationJSON},
+		{format: recipe.ConfigurationFormatTOML, componentID: component.IDConfigurationTOML},
+	} {
+		s.Run(tc.format, func() {
+			r := baseRecipe(recipe.ProjectTypeWeb)
+			r.Configuration.Format = tc.format
+
+			plan, err := Resolve(component.NewRegistry(), r)
+
+			s.Require().NoError(err)
+			s.Require().Contains(planComponentIDs(plan), tc.componentID)
+		})
+	}
+}
+
+func (s *ResolverTestSuite) TestResolveLoggingProviders() {
+	for _, tc := range []struct {
+		provider    string
+		componentID string
+	}{
+		{provider: recipe.LoggingProviderZap, componentID: component.IDLoggingZap},
+		{provider: recipe.LoggingProviderZerolog, componentID: component.IDLoggingZerolog},
+		{provider: recipe.LoggingProviderLogrus, componentID: component.IDLoggingLogrus},
+	} {
+		s.Run(tc.provider, func() {
+			r := baseRecipe(recipe.ProjectTypeWeb)
+			r.Logging.Provider = tc.provider
+
+			plan, err := Resolve(component.NewRegistry(), r)
+
+			s.Require().NoError(err)
+			s.Require().Contains(planComponentIDs(plan), tc.componentID)
+		})
+	}
+}
+
+func (s *ResolverTestSuite) TestResolveGitLabCI() {
+	r := baseRecipe(recipe.ProjectTypeWeb)
+	r.CI.GitLabCI = true
+
+	plan, err := Resolve(component.NewRegistry(), r)
+
+	s.Require().NoError(err)
+	s.Require().Contains(planComponentIDs(plan), component.IDCIGitHubActions)
+	s.Require().Contains(planComponentIDs(plan), component.IDCIGitLabCI)
 }
 
 func (s *ResolverTestSuite) TestRejectsServerFrameworkConflict() {
@@ -109,7 +169,9 @@ func (s *ResolverTestSuite) TestRejectsServerFrameworkConflict() {
 		{ID: component.IDServerChi, Requires: []string{component.IDProjectWeb, component.IDServerNetHTTP}, Conflicts: []string{component.IDServerNetHTTP}},
 		{ID: component.IDDatabaseNone},
 		{ID: component.IDMigrationsNone},
+		{ID: component.IDConfigurationEnv},
 		{ID: component.IDLoggingSlog},
+		{ID: component.IDCIGitHubActions},
 	})
 	r := baseRecipe(recipe.ProjectTypeWeb)
 	r.Server.Framework = recipe.ServerFrameworkChi
@@ -118,6 +180,48 @@ func (s *ResolverTestSuite) TestRejectsServerFrameworkConflict() {
 
 	s.Require().Error(err)
 	s.Require().Contains(err.Error(), component.IDServerNetHTTP+" conflicts with "+component.IDServerChi)
+}
+
+func (s *ResolverTestSuite) TestRejectsConfigurationConflict() {
+	registry := component.NewRegistryFromComponents([]component.Component{
+		{ID: component.IDProjectWeb},
+		{ID: component.IDLayoutMinimal},
+		{ID: component.IDServerNetHTTP, Requires: []string{component.IDProjectWeb}},
+		{ID: component.IDDatabaseNone},
+		{ID: component.IDMigrationsNone},
+		{ID: component.IDConfigurationEnv, Conflicts: []string{component.IDConfigurationYAML}},
+		{ID: component.IDConfigurationYAML, Requires: []string{component.IDConfigurationEnv}, Conflicts: []string{component.IDConfigurationEnv}},
+		{ID: component.IDLoggingSlog},
+		{ID: component.IDCIGitHubActions},
+	})
+	r := baseRecipe(recipe.ProjectTypeWeb)
+	r.Configuration.Format = recipe.ConfigurationFormatYAML
+
+	_, err := Resolve(registry, r)
+
+	s.Require().Error(err)
+	s.Require().Contains(err.Error(), component.IDConfigurationEnv+" conflicts with "+component.IDConfigurationYAML)
+}
+
+func (s *ResolverTestSuite) TestRejectsLoggingConflict() {
+	registry := component.NewRegistryFromComponents([]component.Component{
+		{ID: component.IDProjectWeb},
+		{ID: component.IDLayoutMinimal},
+		{ID: component.IDServerNetHTTP, Requires: []string{component.IDProjectWeb}},
+		{ID: component.IDDatabaseNone},
+		{ID: component.IDMigrationsNone},
+		{ID: component.IDConfigurationEnv},
+		{ID: component.IDLoggingSlog, Conflicts: []string{component.IDLoggingZap}},
+		{ID: component.IDLoggingZap, Requires: []string{component.IDLoggingSlog}, Conflicts: []string{component.IDLoggingSlog}},
+		{ID: component.IDCIGitHubActions},
+	})
+	r := baseRecipe(recipe.ProjectTypeWeb)
+	r.Logging.Provider = recipe.LoggingProviderZap
+
+	_, err := Resolve(registry, r)
+
+	s.Require().Error(err)
+	s.Require().Contains(err.Error(), component.IDLoggingSlog+" conflicts with "+component.IDLoggingZap)
 }
 
 func (s *ResolverTestSuite) TestRejectsDatabaseFrameworkCompatibility() {
@@ -149,7 +253,9 @@ func (s *ResolverTestSuite) TestRejectsMissingDependency() {
 		{ID: component.IDServerChi, Requires: []string{component.IDProjectWeb, "server.router"}},
 		{ID: component.IDDatabaseNone},
 		{ID: component.IDMigrationsNone},
+		{ID: component.IDConfigurationEnv},
 		{ID: component.IDLoggingSlog},
+		{ID: component.IDCIGitHubActions},
 	})
 	r := baseRecipe(recipe.ProjectTypeWeb)
 	r.Server.Framework = recipe.ServerFrameworkChi
@@ -187,7 +293,9 @@ func (s *ResolverTestSuite) TestEliminatesDuplicates() {
 		},
 		{ID: component.IDDatabaseNone},
 		{ID: component.IDMigrationsNone},
+		{ID: component.IDConfigurationEnv},
 		{ID: component.IDLoggingSlog},
+		{ID: component.IDCIGitHubActions},
 	})
 	r := baseRecipe(recipe.ProjectTypeWeb)
 	r.Server.Framework = recipe.ServerFrameworkChi
@@ -195,7 +303,7 @@ func (s *ResolverTestSuite) TestEliminatesDuplicates() {
 	plan, err := Resolve(registry, r)
 
 	s.Require().NoError(err)
-	s.Require().Equal([]string{component.IDProjectWeb, component.IDLayoutMinimal, component.IDServerChi, component.IDDatabaseNone, component.IDMigrationsNone, component.IDLoggingSlog}, planComponentIDs(plan))
+	s.Require().Equal([]string{component.IDProjectWeb, component.IDLayoutMinimal, component.IDServerChi, component.IDDatabaseNone, component.IDMigrationsNone, component.IDConfigurationEnv, component.IDLoggingSlog, component.IDCIGitHubActions}, planComponentIDs(plan))
 	s.Require().Len(plan.Files, 2)
 	s.Require().Len(plan.GoModules, 2)
 	s.Require().Len(plan.Hooks, 2)

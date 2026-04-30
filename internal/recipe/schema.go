@@ -38,9 +38,15 @@ const (
 	DatabaseMigrationsGoose   = "goose"
 	DatabaseMigrationsMigrate = "migrate"
 
+	ConfigurationFormatEnv  = "env"
+	ConfigurationFormatYAML = "yaml"
+	ConfigurationFormatJSON = "json"
+	ConfigurationFormatTOML = "toml"
+
 	LoggingProviderSlog    = "slog"
 	LoggingProviderZap     = "zap"
 	LoggingProviderZerolog = "zerolog"
+	LoggingProviderLogrus  = "logrus"
 
 	LoggingFormatText = "text"
 	LoggingFormatJSON = "json"
@@ -60,6 +66,7 @@ type (
 		Layout        LayoutConfig        `yaml:"layout"`
 		Server        ServerConfig        `yaml:"server,omitempty"`
 		Database      DatabaseConfig      `yaml:"database"`
+		Configuration ConfigurationConfig `yaml:"configuration"`
 		Logging       LoggingConfig       `yaml:"logging"`
 		Observability ObservabilityConfig `yaml:"observability"`
 		Deployment    DeploymentConfig    `yaml:"deployment"`
@@ -94,6 +101,10 @@ type (
 		Migrations string `yaml:"migrations"`
 	}
 
+	ConfigurationConfig struct {
+		Format string `yaml:"format"`
+	}
+
 	LoggingConfig struct {
 		Provider       string `yaml:"provider"`
 		Format         string `yaml:"format"`
@@ -114,6 +125,9 @@ type (
 
 	CIConfig struct {
 		GitHubActions bool `yaml:"github_actions"`
+		GitLabCI      bool `yaml:"gitlab_ci"`
+
+		githubActionsSet bool
 	}
 )
 
@@ -134,5 +148,25 @@ func (c *ServerConfig) UnmarshalYAML(value *yaml.Node) error {
 
 	*c = ServerConfig(decoded)
 	c.gracefulShutdownSet = yamlMappingContains(value, "graceful_shutdown")
+	return nil
+}
+
+func (c *CIConfig) UnmarshalYAML(value *yaml.Node) error {
+	for _, key := range yamlMappingKeys(value) {
+		switch key {
+		case "github_actions", "gitlab_ci":
+		default:
+			return fmt.Errorf("unknown ci field %q", key)
+		}
+	}
+
+	type ciConfig CIConfig
+	var decoded ciConfig
+	if err := value.Decode(&decoded); err != nil {
+		return err
+	}
+
+	*c = CIConfig(decoded)
+	c.githubActionsSet = yamlMappingContains(value, "github_actions")
 	return nil
 }

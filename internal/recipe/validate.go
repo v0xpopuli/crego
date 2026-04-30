@@ -49,6 +49,7 @@ func Validate(r *Recipe) error {
 	problems = appendEnumProblem(problems, "database.driver", r.Database.Driver, databaseDriverValues())
 	problems = appendEnumProblem(problems, "database.framework", r.Database.Framework, databaseFrameworkValues())
 	problems = appendEnumProblem(problems, "database.migrations", r.Database.Migrations, databaseMigrationValues())
+	problems = appendEnumProblem(problems, "configuration.format", r.Configuration.Format, configurationFormatValues())
 	problems = appendEnumProblem(problems, "logging.provider", r.Logging.Provider, loggingProviderValues())
 	problems = appendEnumProblem(problems, "logging.format", r.Logging.Format, loggingFormatValues())
 
@@ -125,8 +126,12 @@ func databaseMigrationValues() []string {
 	return []string{DatabaseMigrationsNone, DatabaseMigrationsGoose, DatabaseMigrationsMigrate}
 }
 
+func configurationFormatValues() []string {
+	return []string{ConfigurationFormatEnv, ConfigurationFormatYAML, ConfigurationFormatJSON, ConfigurationFormatTOML}
+}
+
 func loggingProviderValues() []string {
-	return []string{LoggingProviderSlog, LoggingProviderZap, LoggingProviderZerolog}
+	return []string{LoggingProviderSlog, LoggingProviderZap, LoggingProviderZerolog, LoggingProviderLogrus}
 }
 
 func loggingFormatValues() []string {
