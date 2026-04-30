@@ -6,7 +6,7 @@ on:
 
 jobs:
   go-tests:
-    name: Go tests
+    name: Tests
     if: github.event_name == 'workflow_dispatch' || github.event.ref_type == 'branch'
     runs-on: ubuntu-latest
 
