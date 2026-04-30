@@ -39,12 +39,20 @@ func (s *RegistryTestSuite) TestListIncludesMVPComponents() {
 		IDMigrationsNone,
 		IDMigrationsGoose,
 		IDMigrationsMigrate,
+		IDConfigurationEnv,
+		IDConfigurationYAML,
+		IDConfigurationJSON,
+		IDConfigurationTOML,
 		IDLoggingSlog,
+		IDLoggingZap,
+		IDLoggingZerolog,
+		IDLoggingLogrus,
 		IDObservabilityHealth,
 		IDObservabilityReadiness,
 		IDDeploymentDocker,
 		IDDeploymentCompose,
 		IDCIGitHubActions,
+		IDCIGitLabCI,
 	}, componentIDs(components))
 }
 

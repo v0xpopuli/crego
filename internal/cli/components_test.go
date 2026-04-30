@@ -14,9 +14,20 @@ func (s *CliTestSuite) TestComponentsListCommand() {
 
 		s.Require().NoError(err)
 		s.Require().Equal(componentCategoryOrder, topLevelHeaders(out))
+		s.Require().Contains(out, "configuration:")
+		s.Require().Contains(out, "  env - Configuration loaded from environment variables.")
+		s.Require().Contains(out, "  yaml - Configuration loaded from YAML files.")
+		s.Require().Contains(out, "  json - Configuration loaded from JSON files.")
+		s.Require().Contains(out, "  toml - Configuration loaded from TOML files.")
 		s.Require().Contains(out, "  gin - HTTP server built with Gin.")
 		s.Require().Contains(out, "  framework:")
 		s.Require().Contains(out, "    gorm - Database access through GORM.")
+		s.Require().Contains(out, "  slog - Structured logging through the Go standard library slog package.")
+		s.Require().Contains(out, "  zap - Structured logging through zap.")
+		s.Require().Contains(out, "  zerolog - Structured logging through zerolog.")
+		s.Require().Contains(out, "  logrus - Structured logging through logrus.")
+		s.Require().Contains(out, "  github_actions - GitHub Actions workflow.")
+		s.Require().Contains(out, "  gitlab_ci - GitLab CI pipeline.")
 		s.Require().NotContains(out, "server.gin - HTTP server built with Gin.")
 		s.Require().NotContains(out, "database.framework.gorm - Database access through GORM.")
 		s.Require().NotContains(out, "status: planned, not yet generated")
@@ -106,6 +117,9 @@ func (s *CliTestSuite) TestComponentsShowCommand() {
 		"server.gin",
 		"database.postgres",
 		"database.framework.gorm",
+		"configuration.yaml",
+		"logging.zap",
+		"ci.gitlab_ci",
 	} {
 		s.Run(id+" prints useful metadata", func() {
 			out, _, err := s.executeCLI("components", "show", id)
@@ -159,7 +173,10 @@ func (s *CliTestSuite) TestExplainCommand() {
 		s.Require().Contains(out, "recipe: "+path)
 		s.Require().Contains(out, "selected components:")
 		s.Require().Contains(out, "project.web")
+		s.Require().Contains(out, "configuration.env")
 		s.Require().Contains(out, "database.postgres")
+		s.Require().Contains(out, "logging.slog")
+		s.Require().Contains(out, "ci.github_actions")
 		s.Require().Contains(out, "generated files:")
 		s.Require().Contains(out, "go modules:")
 		s.Require().Contains(out, "hooks:")

@@ -31,6 +31,7 @@ func (s *CliTestSuite) TestRecipeInitCommand() {
 			s.Require().NoError(err)
 			s.Require().Equal(recipe.ProjectTypeWeb, r.Project.Type)
 			s.Require().Equal(tc.driver, r.Database.Driver)
+			s.Require().Equal(recipe.ConfigurationFormatEnv, r.Configuration.Format)
 			s.Require().Equal(recipe.DatabaseMigrationsMigrate, r.Database.Migrations)
 		})
 	}
@@ -124,13 +125,17 @@ func (s *CliTestSuite) TestRecipePrintCommand() {
 
 		s.Require().NoError(err)
 		s.Require().Contains(out, "graceful_shutdown:")
+		s.Require().Contains(out, "configuration:")
+		s.Require().Contains(out, "format: env")
 		s.Require().Contains(out, "request_logging:")
 		s.Require().Contains(out, "github_actions:")
+		s.Require().Contains(out, "gitlab_ci:")
 		s.Require().Contains(out, "migrations: migrate")
 		s.Require().Contains(out, "version: v1\n\nproject:")
 		s.Require().Contains(out, "\nproject:\n  name:")
 		s.Require().NotContains(out, "    name:")
 		s.Require().NotContains(out, "requestLogging")
+		s.Require().NotContains(out, "gitlabCI")
 	})
 
 	s.Run("prints valid json", func() {

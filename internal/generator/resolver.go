@@ -43,8 +43,18 @@ var (
 		recipe.DatabaseMigrationsMigrate: component.IDMigrationsMigrate,
 	}
 
+	configurationFormatComponentIDs = map[string]string{
+		recipe.ConfigurationFormatEnv:  component.IDConfigurationEnv,
+		recipe.ConfigurationFormatYAML: component.IDConfigurationYAML,
+		recipe.ConfigurationFormatJSON: component.IDConfigurationJSON,
+		recipe.ConfigurationFormatTOML: component.IDConfigurationTOML,
+	}
+
 	loggingProviderComponentIDs = map[string]string{
-		recipe.LoggingProviderSlog: component.IDLoggingSlog,
+		recipe.LoggingProviderSlog:    component.IDLoggingSlog,
+		recipe.LoggingProviderZap:     component.IDLoggingZap,
+		recipe.LoggingProviderZerolog: component.IDLoggingZerolog,
+		recipe.LoggingProviderLogrus:  component.IDLoggingLogrus,
 	}
 
 	databaseBackedComponents = []string{
@@ -89,7 +99,7 @@ func Resolve(registry *component.Registry, source *recipe.Recipe) (*Plan, error)
 }
 
 func mappedComponentIDs(r *recipe.Recipe) []string {
-	ids := make([]string, 0, 12)
+	ids := make([]string, 0, 14)
 	add := func(id string) {
 		if id != "" {
 			ids = append(ids, id)
@@ -109,6 +119,9 @@ func mappedComponentIDs(r *recipe.Recipe) []string {
 	}
 	add(mappedID(databaseMigrationsComponentIDs, component.CategoryMigrations, r.Database.Migrations))
 
+	if r.Configuration.Format != "" {
+		add(mappedID(configurationFormatComponentIDs, component.CategoryConfiguration, r.Configuration.Format))
+	}
 	if r.Logging.Provider != "" {
 		add(mappedID(loggingProviderComponentIDs, component.CategoryLogging, r.Logging.Provider))
 	}
@@ -126,6 +139,9 @@ func mappedComponentIDs(r *recipe.Recipe) []string {
 	}
 	if r.CI.GitHubActions {
 		add(component.IDCIGitHubActions)
+	}
+	if r.CI.GitLabCI {
+		add(component.IDCIGitLabCI)
 	}
 
 	return ids

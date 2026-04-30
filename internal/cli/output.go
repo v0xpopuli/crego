@@ -18,6 +18,7 @@ const (
 var componentCategoryOrder = []string{
 	component.CategoryProject,
 	component.CategoryLayout,
+	component.CategoryConfiguration,
 	component.CategoryServer,
 	component.CategoryDatabase,
 	component.CategoryMigrations,

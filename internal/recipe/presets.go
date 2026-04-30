@@ -42,5 +42,8 @@ func presetBase(name string, module string, projectType string) Recipe {
 			Module: module,
 			Type:   projectType,
 		},
+		Configuration: ConfigurationConfig{
+			Format: ConfigurationFormatEnv,
+		},
 	}
 }

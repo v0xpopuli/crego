@@ -5,6 +5,7 @@ const (
 	defaultLayoutStyle     = LayoutStyleMinimal
 	defaultServerFramework = ServerFrameworkNetHTTP
 	defaultServerPort      = 8080
+	defaultConfigFormat    = ConfigurationFormatEnv
 	defaultLoggingProvider = LoggingProviderSlog
 	defaultLoggingFormat   = LoggingFormatText
 )
@@ -46,11 +47,19 @@ func ApplyDefaults(r *Recipe) *Recipe {
 		r.Database.Migrations = DatabaseMigrationsNone
 	}
 
+	if r.Configuration.Format == "" {
+		r.Configuration.Format = defaultConfigFormat
+	}
+
 	if r.Logging.Provider == "" {
 		r.Logging.Provider = defaultLoggingProvider
 	}
 	if r.Logging.Format == "" {
 		r.Logging.Format = defaultLoggingFormat
+	}
+
+	if !r.CI.githubActionsSet {
+		r.CI.GitHubActions = true
 	}
 
 	return r
