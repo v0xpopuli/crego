@@ -49,7 +49,13 @@ func runExplain(out io.Writer, opts *explainOptions) error {
 		return err
 	}
 
-	result := explainResult(opts.recipePath, plan)
+	explainPlan := *plan
+	explainPlan.Files, err = generator.RenderFileTargets(r, plan)
+	if err != nil {
+		return err
+	}
+
+	result := explainResult(opts.recipePath, &explainPlan)
 	if opts.json {
 		return encodeJSON(out, result)
 	}

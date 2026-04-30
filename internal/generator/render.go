@@ -65,6 +65,27 @@ func renderFiles(ctx context.Context, templates fs.FS, source *recipe.Recipe, pl
 	return result, nil
 }
 
+func RenderFileTargets(source *recipe.Recipe, plan *Plan) ([]component.TemplateFile, error) {
+	if plan == nil || len(plan.Files) == 0 {
+		return []component.TemplateFile{}, nil
+	}
+
+	data := newRenderContext(source, plan)
+	funcs := templateFuncs(data.ComponentIDs)
+	files := make([]component.TemplateFile, 0, len(plan.Files))
+	for _, file := range plan.Files {
+		target, err := renderTemplateText(file.Source, file.Target, data, funcs)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, component.TemplateFile{
+			Source: file.Source,
+			Target: target,
+		})
+	}
+	return files, nil
+}
+
 func formatRenderedContent(source string, target string, content []byte) ([]byte, error) {
 	if !strings.HasSuffix(target, ".go") {
 		return content, nil

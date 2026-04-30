@@ -125,6 +125,7 @@ type (
 
 	CIConfig struct {
 		GitHubActions bool `yaml:"github_actions"`
+		GitLabCI      bool `yaml:"gitlab_ci"`
 	}
 )
 

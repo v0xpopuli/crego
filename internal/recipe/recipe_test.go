@@ -51,6 +51,7 @@ deployment:
   compose: true
 ci:
   github_actions: true
+  gitlab_ci: false
 `)
 
 	r, err := Load(path)
@@ -227,6 +228,7 @@ func (s *RecipeTestSuite) TestSaveUsesSnakeCaseYAMLKeys() {
 	s.Require().Contains(output, "framework: slog")
 	s.Require().Contains(output, "request_logging:")
 	s.Require().Contains(output, "github_actions:")
+	s.Require().Contains(output, "gitlab_ci:")
 	s.Require().Contains(output, "version: v1\n\nproject:")
 	s.Require().Contains(output, "\nproject:\n  name:")
 	s.Require().Contains(output, "\nproject:\n  name: orders-web\n  module:")
