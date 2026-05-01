@@ -1,0 +1,30 @@
+FROM golang:{{ .Recipe.Go.Version }}-alpine AS build
+
+WORKDIR /src
+
+COPY go.mod ./
+RUN go mod download
+
+COPY . .
+RUN go mod tidy
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/{{ .ProjectName }} ./cmd/{{ .ProjectName }}
+
+FROM alpine:3.22
+
+RUN addgroup -S app && adduser -S -G app app && mkdir -p /app/data && chown -R app:app /app
+
+WORKDIR /app
+
+COPY --from=build /out/{{ .ProjectName }} /app/{{ .ProjectName }}
+{{ if ne .Recipe.Configuration.Format "env" -}}
+COPY --from=build /src/configs ./configs
+{{ end -}}
+{{ if sqlMigrations .Recipe.Database.Migrations -}}
+COPY --from=build /src/scripts ./scripts
+{{ end -}}
+
+USER app
+
+EXPOSE {{ .Recipe.Server.Port }}
+
+ENTRYPOINT ["/app/{{ .ProjectName }}"]

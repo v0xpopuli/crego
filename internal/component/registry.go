@@ -219,6 +219,10 @@ func defaultComponents() []Component {
 			Category:    CategoryDeployment,
 			Name:        "Docker",
 			Description: "Dockerfile for containerized builds.",
+			Files: []TemplateFile{
+				{Source: "web/Dockerfile.tmpl", Target: "deployments/Dockerfile"},
+				{Source: "web/dockerignore.tmpl", Target: "deployments/.dockerignore"},
+			},
 		},
 		{
 			ID:          IDDeploymentCompose,
@@ -226,18 +230,21 @@ func defaultComponents() []Component {
 			Name:        "Docker Compose",
 			Description: "Docker Compose app service.",
 			Requires:    []string{IDDeploymentDocker},
+			Files:       []TemplateFile{{Source: "web/docker-compose.yml.tmpl", Target: "deployments/docker-compose.yml"}},
 		},
 		{
 			ID:          IDCIGitHubActions,
 			Category:    CategoryCI,
 			Name:        "GitHub Actions",
 			Description: "GitHub Actions workflow.",
+			Files:       []TemplateFile{{Source: "web/github-actions-test.yml.tmpl", Target: ".github/workflows/test.yml"}},
 		},
 		{
 			ID:          IDCIGitLabCI,
 			Category:    CategoryCI,
 			Name:        "GitLab CI",
 			Description: "GitLab CI pipeline.",
+			Files:       []TemplateFile{{Source: "web/gitlab-ci.yml.tmpl", Target: ".gitlab-ci.yml"}},
 		},
 	}
 }

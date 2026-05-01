@@ -149,6 +149,9 @@ func mappedComponentIDs(r *recipe.Recipe) []string {
 	if r.CI.GitHubActions {
 		add(component.IDCIGitHubActions)
 	}
+	if r.CI.GitLabCI {
+		add(component.IDCIGitLabCI)
+	}
 
 	return ids
 }

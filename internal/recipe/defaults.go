@@ -1,7 +1,7 @@
 package recipe
 
 const (
-	defaultGoVersion        = "1.24"
+	defaultGoVersion        = "1.25"
 	defaultLayoutStyle      = LayoutStyleMinimal
 	defaultServerFramework  = ServerFrameworkNetHTTP
 	defaultServerPort       = 8080

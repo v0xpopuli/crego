@@ -1,0 +1,137 @@
+services:
+  app:
+    build:
+      context: .
+    image: {{ .ProjectName }}:local
+    environment:
+      APP_ENV: development
+      HTTP_PORT: "{{ .Recipe.Server.Port }}"
+      LOG_FORMAT: {{ .Recipe.Logging.Format }}
+{{ if ne .Recipe.Configuration.Format "env" }}
+      CONFIG_PATH: configs/config.{{ .Recipe.Configuration.Format }}
+{{ end -}}
+{{ if hasDatabase "postgres" }}
+      POSTGRES_URL: postgres://postgres:postgres@postgres:5432/app?sslmode=disable
+{{ end -}}
+{{ if hasDatabase "mysql" }}
+      MYSQL_URL: mysql://root:root@tcp(mysql:3306)/app?parseTime=true
+{{ end -}}
+{{ if hasDatabase "sqlite" }}
+      SQLITE_URL: file:/app/data/app.db?_foreign_keys=on
+{{ end -}}
+{{ if and (anySQLDatabaseEnabled) (sqlMigrations .Recipe.Database.Migrations) }}
+      DATABASE_MIGRATIONS: file://scripts/migrations
+{{ end -}}
+{{ if hasDatabase "redis" }}
+      REDIS_ADDRESS: redis:6379
+{{ end -}}
+{{ if hasDatabase "mongodb" }}
+      MONGODB_URI: mongodb://mongodb:27017/app
+{{ end }}
+    ports:
+      - "{{ .Recipe.Server.Port }}:{{ .Recipe.Server.Port }}"
+{{ if or (hasDatabase "postgres") (hasDatabase "mysql") (hasDatabase "redis") (hasDatabase "mongodb") }}
+    depends_on:
+{{ if hasDatabase "postgres" }}
+      postgres:
+        condition: service_healthy
+{{ end -}}
+{{ if hasDatabase "mysql" }}
+      mysql:
+        condition: service_healthy
+{{ end -}}
+{{ if hasDatabase "redis" }}
+      redis:
+        condition: service_healthy
+{{ end -}}
+{{ if hasDatabase "mongodb" }}
+      mongodb:
+        condition: service_healthy
+{{ end -}}
+{{ end -}}
+{{ if hasDatabase "sqlite" }}
+    volumes:
+      - sqlite-data:/app/data
+{{ end }}
+
+{{ if hasDatabase "postgres" }}
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d app"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+{{ end -}}
+{{ if hasDatabase "mysql" }}
+  mysql:
+    image: mysql:9
+    environment:
+      MYSQL_DATABASE: app
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - mysql-data:/var/lib/mysql
+
+{{ end -}}
+{{ if hasDatabase "redis" }}
+  redis:
+    image: redis:8-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - redis-data:/data
+
+{{ end -}}
+{{ if hasDatabase "mongodb" }}
+  mongodb:
+    image: mongo:8
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - mongodb-data:/data/db
+
+{{ end -}}
+{{ if or (hasDatabase "postgres") (hasDatabase "mysql") (hasDatabase "sqlite") (hasDatabase "redis") (hasDatabase "mongodb") }}
+volumes:
+{{ if hasDatabase "postgres" }}
+  postgres-data:
+{{ end -}}
+{{ if hasDatabase "mysql" }}
+  mysql-data:
+{{ end -}}
+{{ if hasDatabase "sqlite" }}
+  sqlite-data:
+{{ end -}}
+{{ if hasDatabase "redis" }}
+  redis-data:
+{{ end -}}
+{{ if hasDatabase "mongodb" }}
+  mongodb-data:
+{{ end -}}
+{{ end -}}

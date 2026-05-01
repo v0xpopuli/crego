@@ -75,7 +75,7 @@ project:
 	r, err := Load(path)
 
 	s.Require().NoError(err)
-	s.Require().Equal("1.24", r.Go.Version)
+	s.Require().Equal("1.25", r.Go.Version)
 	s.Require().Equal(LayoutStyleMinimal, r.Layout.Style)
 	s.Require().Equal(ServerFrameworkNetHTTP, r.Server.Framework)
 	s.Require().Equal(8080, r.Server.Port)
