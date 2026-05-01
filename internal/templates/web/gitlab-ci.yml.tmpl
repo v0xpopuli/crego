@@ -1,0 +1,25 @@
+image: golang:{{ .Recipe.Go.Version }}
+
+variables:
+  GOPATH: "$CI_PROJECT_DIR/.go"
+  GOCACHE: "$CI_PROJECT_DIR/.cache/go-build"
+
+cache:
+  key:
+    files:
+      - go.mod
+      - go.sum
+  paths:
+    - .go/pkg/mod/
+    - .cache/go-build/
+
+stages:
+  - test
+
+test:
+  stage: test
+  before_script:
+    - go mod tidy
+  script:
+    - go vet ./...
+    - go test ./...

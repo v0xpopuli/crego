@@ -1,8 +1,16 @@
-.PHONY: test run build
+.PHONY: test run build{{ if .Recipe.Deployment.Docker }} docker-build docker-run{{ end }}{{ if .Recipe.Deployment.Compose }} compose-up compose-down compose-logs{{ end }}
 
 APP_NAME ?= {{ .ProjectName }}
 BUILD_DIR ?= ./build
 MAIN_PACKAGE ?= ./cmd/{{ .ProjectName }}
+HTTP_PORT ?= {{ .Recipe.Server.Port }}
+{{ if .Recipe.Deployment.Docker -}}
+IMAGE_NAME ?= {{ .ProjectName }}:local
+DOCKER_RUN_ENV ?=
+{{ end -}}
+{{ if .Recipe.Deployment.Compose -}}
+COMPOSE_FILE ?= deployments/docker-compose.yml
+{{ end }}
 
 test:
 	go test ./...
@@ -13,3 +21,22 @@ run:
 build:
 	mkdir -p $(BUILD_DIR)
 	go build -o $(BUILD_DIR)/$(APP_NAME) $(MAIN_PACKAGE)
+{{ if .Recipe.Deployment.Docker }}
+
+docker-build:
+	docker build -t $(IMAGE_NAME) .
+
+docker-run:
+	docker run --rm -p $(HTTP_PORT):$(HTTP_PORT) $(DOCKER_RUN_ENV) $(IMAGE_NAME)
+{{ end -}}
+{{ if .Recipe.Deployment.Compose }}
+
+compose-up:
+	docker compose -f $(COMPOSE_FILE) up --build
+
+compose-down:
+	docker compose -f $(COMPOSE_FILE) down
+
+compose-logs:
+	docker compose -f $(COMPOSE_FILE) logs -f app
+{{ end -}}

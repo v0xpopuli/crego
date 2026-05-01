@@ -28,6 +28,7 @@ func (s *ResolverTestSuite) TestResolveWebChiPostgresGoose() {
 	r.Deployment.Docker = true
 	r.Deployment.Compose = true
 	r.CI.GitHubActions = true
+	r.CI.GitLabCI = true
 
 	plan, err := Resolve(component.NewRegistry(), r)
 
@@ -46,7 +47,27 @@ func (s *ResolverTestSuite) TestResolveWebChiPostgresGoose() {
 		component.IDDeploymentDocker,
 		component.IDDeploymentCompose,
 		component.IDCIGitHubActions,
+		component.IDCIGitLabCI,
 	}, planComponentIDs(plan))
+}
+
+func (s *ResolverTestSuite) TestResolveDeploymentAndCIFileTargets() {
+	r := baseRecipe(recipe.ProjectTypeWeb)
+	r.Deployment.Docker = true
+	r.Deployment.Compose = true
+	r.CI.GitHubActions = true
+	r.CI.GitLabCI = true
+
+	plan, err := Resolve(component.NewRegistry(), r)
+
+	s.Require().NoError(err)
+	targets, err := RenderFileTargets(r, plan)
+	s.Require().NoError(err)
+	s.Require().Contains(templateTargets(targets), "deployments/Dockerfile")
+	s.Require().Contains(templateTargets(targets), "deployments/.dockerignore")
+	s.Require().Contains(templateTargets(targets), "deployments/docker-compose.yml")
+	s.Require().Contains(templateTargets(targets), ".github/workflows/test.yml")
+	s.Require().Contains(templateTargets(targets), ".gitlab-ci.yml")
 }
 
 func (s *ResolverTestSuite) TestResolveWebGinMySQL() {
@@ -357,4 +378,12 @@ func planGoModulePaths(plan *Plan) []string {
 		paths = append(paths, module.Path)
 	}
 	return paths
+}
+
+func templateTargets(files []component.TemplateFile) []string {
+	targets := make([]string, 0, len(files))
+	for _, file := range files {
+		targets = append(targets, file.Target)
+	}
+	return targets
 }
