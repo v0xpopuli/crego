@@ -36,6 +36,36 @@ func (s *CliTestSuite) TestRecipeInitCommand() {
 		})
 	}
 
+	for _, tc := range []struct {
+		preset string
+		driver string
+	}{
+		{preset: recipe.PresetWebRedis, driver: recipe.DatabaseDriverRedis},
+		{preset: recipe.PresetWebMongoDB, driver: recipe.DatabaseDriverMongoDB},
+	} {
+		s.Run(tc.preset+" writes valid nosql web recipe", func() {
+			path := filepath.Join(s.T().TempDir(), "crego.yaml")
+
+			_, _, err := s.executeCLI("recipe", "init", "--preset", tc.preset, "--out", path)
+
+			s.Require().NoError(err)
+			r, err := recipe.Load(path)
+			s.Require().NoError(err)
+			s.Require().Equal(tc.driver, r.Database.Driver)
+			s.Require().Equal(recipe.DatabaseFrameworkNone, r.Database.Framework)
+			s.Require().Equal(recipe.DatabaseMigrationsNone, r.Database.Migrations)
+
+			data, err := os.ReadFile(path)
+			s.Require().NoError(err)
+			output := string(data)
+			s.Require().Contains(output, "sql_database: none")
+			s.Require().Contains(output, "nosql_database: "+tc.driver)
+			s.Require().NotContains(output, "\ndatabase:")
+			s.Require().NotContains(output, "orm_framework:")
+			s.Require().NotContains(output, "migrations:")
+		})
+	}
+
 	s.Run("does not overwrite existing file without flag", func() {
 		path := filepath.Join(s.T().TempDir(), "crego.yaml")
 		s.Require().NoError(os.WriteFile(path, []byte("sentinel"), 0o644))
@@ -130,10 +160,14 @@ func (s *CliTestSuite) TestRecipePrintCommand() {
 		s.Require().Contains(out, "request_logging:")
 		s.Require().Contains(out, "github_actions:")
 		s.Require().Contains(out, "gitlab_ci:")
+		s.Require().Contains(out, "sql_database: postgres")
+		s.Require().Contains(out, "orm_framework:")
+		s.Require().Contains(out, "nosql_database: none")
 		s.Require().Contains(out, "migrations: migrate")
 		s.Require().Contains(out, "framework: slog")
 		s.Require().Contains(out, "version: v1\n\nproject:")
 		s.Require().Contains(out, "\nproject:\n  name:")
+		s.Require().NotContains(out, "\ndatabase:")
 		s.Require().NotContains(out, "    name:")
 		s.Require().NotContains(out, "provider:")
 		s.Require().NotContains(out, "requestLogging")

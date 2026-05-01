@@ -1,0 +1,116 @@
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+package app
+{{ else -}}
+package database
+{{ end }}
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"strings"
+	"time"
+
+{{ if eq .Recipe.Database.Framework "sql" }}
+	_ "github.com/go-sql-driver/mysql"
+{{ end }}
+{{ if eq .Recipe.Database.Framework "gorm" }}
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
+{{ end }}
+{{ if ne .Recipe.Layout.Style "minimal" -}}
+	"{{ .ModulePath }}/internal/logging"
+{{ end -}}
+)
+
+type MySQLConfig struct {
+	URL        string
+	Migrations string
+}
+
+type MySQLClient struct {
+	config MySQLConfig
+	address string
+	logger  {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}
+{{ if eq .Recipe.Database.Framework "sql" }}
+	DB *sql.DB
+{{ end }}
+{{ if eq .Recipe.Database.Framework "gorm" }}
+	Database *gorm.DB
+	sqlDB    *sql.DB
+{{ end }}
+}
+
+func NewMySQLClient(ctx context.Context, cfg MySQLConfig, logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) (*MySQLClient, error) {
+	if cfg.URL == "" {
+		return nil, fmt.Errorf("database_url is required")
+	}
+	address := mysqlDSN(cfg.URL)
+{{ if eq .Recipe.Database.Framework "sql" }}
+	db, err := sql.Open("mysql", address)
+	if err != nil {
+		return nil, fmt.Errorf("open mysql database: %w", err)
+	}
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(30 * time.Minute)
+	client := &MySQLClient{config: cfg, address: address, logger: logger, DB: db}
+	if err := client.Ping(ctx); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("ping mysql database: %w", err)
+	}
+{{ end }}
+{{ if eq .Recipe.Database.Framework "gorm" }}
+	database, err := gorm.Open(mysql.Open(address), &gorm.Config{})
+	if err != nil {
+		return nil, fmt.Errorf("open mysql database: %w", err)
+	}
+	sqlDB, err := database.DB()
+	if err != nil {
+		return nil, fmt.Errorf("open mysql sql database: %w", err)
+	}
+	sqlDB.SetMaxOpenConns(10)
+	sqlDB.SetMaxIdleConns(5)
+	sqlDB.SetConnMaxLifetime(30 * time.Minute)
+	client := &MySQLClient{config: cfg, address: address, logger: logger, Database: database, sqlDB: sqlDB}
+	if err := client.Ping(ctx); err != nil {
+		_ = sqlDB.Close()
+		return nil, fmt.Errorf("ping mysql database: %w", err)
+	}
+{{ end }}
+	if logger != nil {
+		logger.Info("database connected", "driver", "mysql", "framework", "{{ .Recipe.Database.Framework }}")
+	}
+	return client, nil
+}
+
+func (c *MySQLClient) Ping(ctx context.Context) error {
+{{ if eq .Recipe.Database.Framework "sql" }}
+	return c.DB.PingContext(ctx)
+{{ end }}
+{{ if eq .Recipe.Database.Framework "gorm" }}
+	return c.sqlDB.PingContext(ctx)
+{{ end }}
+}
+
+func (c *MySQLClient) Shutdown(ctx context.Context) error {
+	_ = ctx
+{{ if eq .Recipe.Database.Framework "sql" }}
+	if err := c.DB.Close(); err != nil {
+		return err
+	}
+{{ end }}
+{{ if eq .Recipe.Database.Framework "gorm" }}
+	if err := c.sqlDB.Close(); err != nil {
+		return err
+	}
+{{ end }}
+	if c.logger != nil {
+		c.logger.Info("database connection closed", "driver", "mysql")
+	}
+	return nil
+}
+
+func mysqlDSN(value string) string {
+	return strings.TrimPrefix(value, "mysql://")
+}

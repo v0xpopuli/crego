@@ -19,6 +19,12 @@ func NewPreset(name string) (*Recipe, error) {
 		r = presetBase("example-web", "example.com/example-web", ProjectTypeWeb)
 		r.Database.Driver = DatabaseDriverSQLite
 		r.Database.Migrations = DatabaseMigrationsMigrate
+	case PresetWebRedis:
+		r = presetBase("example-web", "example.com/example-web", ProjectTypeWeb)
+		r.Database.Driver = DatabaseDriverRedis
+	case PresetWebMongoDB:
+		r = presetBase("example-web", "example.com/example-web", ProjectTypeWeb)
+		r.Database.Driver = DatabaseDriverMongoDB
 	case PresetCLIBasic:
 		r = presetBase("example-cli", "example.com/example-cli", ProjectTypeCLI)
 	default:

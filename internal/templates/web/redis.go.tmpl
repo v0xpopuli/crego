@@ -1,0 +1,58 @@
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+package app
+{{ else -}}
+package database
+{{ end }}
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/redis/go-redis/v9"
+{{ if ne .Recipe.Layout.Style "minimal" -}}
+	"{{ .ModulePath }}/internal/logging"
+{{ end -}}
+)
+
+type RedisConfig struct {
+	Address string
+}
+
+type RedisClient struct {
+	config RedisConfig
+	logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}
+	Client *redis.Client
+}
+
+func NewRedisClient(ctx context.Context, cfg RedisConfig, logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) (*RedisClient, error) {
+	if cfg.Address == "" {
+		return nil, fmt.Errorf("redis_address is required")
+	}
+	client := redis.NewClient(&redis.Options{
+		Addr: cfg.Address,
+	})
+	result := &RedisClient{config: cfg, logger: logger, Client: client}
+	if err := result.Ping(ctx); err != nil {
+		_ = client.Close()
+		return nil, fmt.Errorf("ping redis: %w", err)
+	}
+	if logger != nil {
+		logger.Info("database connected", "driver", "redis", "address", cfg.Address)
+	}
+	return result, nil
+}
+
+func (c *RedisClient) Ping(ctx context.Context) error {
+	return c.Client.Ping(ctx).Err()
+}
+
+func (c *RedisClient) Shutdown(ctx context.Context) error {
+	_ = ctx
+	if err := c.Client.Close(); err != nil {
+		return err
+	}
+	if c.logger != nil {
+		c.logger.Info("database connection closed", "driver", "redis")
+	}
+	return nil
+}

@@ -91,7 +91,7 @@ future generation commands.`,
 	}
 	cmd.SetOut(out)
 	cmd.Flags().StringVarP(&opts.outPath, "out", "o", "crego.yaml", "Path to write the recipe file")
-	cmd.Flags().StringVar(&opts.preset, "preset", recipe.PresetWebBasic, "Starter preset: web-basic, web-postgres, web-mysql, web-sqlite, cli-basic")
+	cmd.Flags().StringVar(&opts.preset, "preset", recipe.PresetWebBasic, "Starter preset: web-basic, web-postgres, web-mysql, web-sqlite, web-redis, web-mongodb, cli-basic")
 	cmd.Flags().StringVar(&opts.module, "module", "", "Go module path to set in project.module")
 	cmd.Flags().StringVar(&opts.name, "name", "", "Project name to set in project.name")
 	cmd.Flags().BoolVar(&opts.overwrite, "overwrite", false, "Overwrite an existing recipe file")

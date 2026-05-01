@@ -1,0 +1,110 @@
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+package app
+{{ else -}}
+package database
+{{ end }}
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"time"
+
+{{ if eq .Recipe.Database.Framework "sql" }}
+	_ "modernc.org/sqlite"
+{{ end }}
+{{ if eq .Recipe.Database.Framework "gorm" }}
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+{{ end }}
+{{ if ne .Recipe.Layout.Style "minimal" -}}
+	"{{ .ModulePath }}/internal/logging"
+{{ end -}}
+)
+
+type SQLiteConfig struct {
+	URL        string
+	Migrations string
+}
+
+type SQLiteClient struct {
+	config SQLiteConfig
+	address string
+	logger  {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}
+{{ if eq .Recipe.Database.Framework "sql" }}
+	DB *sql.DB
+{{ end }}
+{{ if eq .Recipe.Database.Framework "gorm" }}
+	Database *gorm.DB
+	sqlDB    *sql.DB
+{{ end }}
+}
+
+func NewSQLiteClient(ctx context.Context, cfg SQLiteConfig, logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) (*SQLiteClient, error) {
+	if cfg.URL == "" {
+		return nil, fmt.Errorf("database_url is required")
+	}
+{{ if eq .Recipe.Database.Framework "sql" }}
+	db, err := sql.Open("sqlite", cfg.URL)
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite database: %w", err)
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxLifetime(30 * time.Minute)
+	client := &SQLiteClient{config: cfg, address: cfg.URL, logger: logger, DB: db}
+	if err := client.Ping(ctx); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("ping sqlite database: %w", err)
+	}
+{{ end }}
+{{ if eq .Recipe.Database.Framework "gorm" }}
+	database, err := gorm.Open(sqlite.Open(cfg.URL), &gorm.Config{})
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite database: %w", err)
+	}
+	sqlDB, err := database.DB()
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite sql database: %w", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
+	sqlDB.SetConnMaxLifetime(30 * time.Minute)
+	client := &SQLiteClient{config: cfg, address: cfg.URL, logger: logger, Database: database, sqlDB: sqlDB}
+	if err := client.Ping(ctx); err != nil {
+		_ = sqlDB.Close()
+		return nil, fmt.Errorf("ping sqlite database: %w", err)
+	}
+{{ end }}
+	if logger != nil {
+		logger.Info("database connected", "driver", "sqlite", "framework", "{{ .Recipe.Database.Framework }}")
+	}
+	return client, nil
+}
+
+func (c *SQLiteClient) Ping(ctx context.Context) error {
+{{ if eq .Recipe.Database.Framework "sql" }}
+	return c.DB.PingContext(ctx)
+{{ end }}
+{{ if eq .Recipe.Database.Framework "gorm" }}
+	return c.sqlDB.PingContext(ctx)
+{{ end }}
+}
+
+func (c *SQLiteClient) Shutdown(ctx context.Context) error {
+	_ = ctx
+{{ if eq .Recipe.Database.Framework "sql" }}
+	if err := c.DB.Close(); err != nil {
+		return err
+	}
+{{ end }}
+{{ if eq .Recipe.Database.Framework "gorm" }}
+	if err := c.sqlDB.Close(); err != nil {
+		return err
+	}
+{{ end }}
+	if c.logger != nil {
+		c.logger.Info("database connection closed", "driver", "sqlite")
+	}
+	return nil
+}

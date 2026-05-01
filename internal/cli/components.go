@@ -54,10 +54,11 @@ func newComponentsListCommand(out io.Writer) *cobra.Command {
 		Long: `List available crego components.
 
 Components are grouped by category. Database framework components are displayed
-under the database category because they are selected as part of database setup.`,
+under orm_framework because they are selected as part of SQL database setup.`,
 		Example: `  crego components list
   crego components list --category server
-  crego components list --category database
+  crego components list --category sql_database
+  crego components list --category nosql_database
   crego components list --json`,
 		Args: cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
@@ -86,11 +87,24 @@ func runComponentsList(out io.Writer, opts *componentsListOptions) error {
 func componentsListResult(components []component.Component, category string) componentsListOutput {
 	grouped := make(map[string][]componentSummaryOutput, len(componentCategoryOrder))
 	for _, c := range components {
-		publicCategory := publicComponentCategory(c.Category)
+		summary := componentSummary(c)
+		publicCategory := summary.Category
 		if category != "" && publicCategory != category {
+			if c.ID == component.IDDatabaseNone && category == component.CategoryNoSQLDatabase {
+				noSQLSummary := summary
+				noSQLSummary.Category = component.CategoryNoSQLDatabase
+				noSQLSummary.Description = "Project without a nosql database integration."
+				grouped[component.CategoryNoSQLDatabase] = append(grouped[component.CategoryNoSQLDatabase], noSQLSummary)
+			}
 			continue
 		}
-		grouped[publicCategory] = append(grouped[publicCategory], componentSummary(c))
+		grouped[publicCategory] = append(grouped[publicCategory], summary)
+		if c.ID == component.IDDatabaseNone {
+			noSQLSummary := summary
+			noSQLSummary.Category = component.CategoryNoSQLDatabase
+			noSQLSummary.Description = "Project without a nosql database integration."
+			grouped[component.CategoryNoSQLDatabase] = append(grouped[component.CategoryNoSQLDatabase], noSQLSummary)
+		}
 	}
 
 	result := componentsListOutput{
@@ -154,6 +168,16 @@ func writeComponentsList(out io.Writer, result componentsListOutput) error {
 }
 
 func componentListDisplayParts(category string, id string) (string, string) {
+	switch category {
+	case component.CategorySQLDatabase, component.CategoryNoSQLDatabase:
+		if id == component.IDDatabaseNone {
+			return "", "none"
+		}
+		return "", strings.TrimPrefix(id, component.CategoryDatabase+".")
+	case component.CategoryORMFramework:
+		return "", strings.TrimPrefix(id, component.CategoryDatabaseFramework+".")
+	}
+
 	prefix := category + "."
 	if !strings.HasPrefix(id, prefix) {
 		return "", id
@@ -174,8 +198,7 @@ func newComponentsShowCommand(out io.Writer) *cobra.Command {
 		Short: "Show component details",
 		Long: `Show details for a crego component.
 
-Details include compatibility metadata, planned files, Go modules, hooks, and
-whether generation artifacts are implemented yet.`,
+Details include compatibility metadata, planned files, Go modules, and hooks.`,
 		Example: `  crego components show server.chi
   crego components show server.gin
   crego components show database.postgres
@@ -231,14 +254,6 @@ func writeComponentDetail(out io.Writer, c componentDetailOutput) error {
 	}
 	if err := writeHooks(out, c.Hooks); err != nil {
 		return err
-	}
-	if _, err := fmt.Fprintf(out, "support_status: %s\n", c.SupportStatus); err != nil {
-		return err
-	}
-	if c.SupportNote != "" {
-		if _, err := fmt.Fprintf(out, "support_note: %s\n", c.SupportNote); err != nil {
-			return err
-		}
 	}
 	return nil
 }

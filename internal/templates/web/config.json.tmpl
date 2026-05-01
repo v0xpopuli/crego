@@ -1,5 +1,11 @@
 {
   "app_env": "development",
   "http_port": {{ .Recipe.Server.Port }},
-  "log_format": "{{ .Recipe.Logging.Format }}"
+  "log_format": "{{ .Recipe.Logging.Format }}"{{ if hasDatabase "postgres" }},
+  "postgres_url": "postgres://postgres:postgres@localhost:5432/app?sslmode=disable"{{ end -}}{{ if hasDatabase "mysql" }},
+  "mysql_url": "mysql://root:root@tcp(localhost:3306)/app?parseTime=true"{{ end -}}{{ if hasDatabase "sqlite" }},
+  "sqlite_url": "file:app.db?_foreign_keys=on"{{ end -}}{{ if and (anySQLDatabaseEnabled) (sqlMigrations .Recipe.Database.Migrations) }},
+  "database_migrations": "file://scripts/migrations"{{ end -}}{{ if hasDatabase "redis" }},
+  "redis_address": "localhost:6379"{{ end -}}{{ if hasDatabase "mongodb" }},
+  "mongodb_uri": "mongodb://localhost:27017/app"{{ end }}
 }

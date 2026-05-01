@@ -141,6 +141,85 @@ logging:
 	}
 }
 
+func (s *RecipeTestSuite) TestLoadAcceptsDatabaseDrivers() {
+	for _, driver := range []string{DatabaseDriverNone, DatabaseDriverPostgres, DatabaseDriverMySQL, DatabaseDriverSQLite, DatabaseDriverRedis, DatabaseDriverMongoDB} {
+		s.Run(driver, func() {
+			path := s.writeRecipe(`version: v1
+project:
+  name: orders-web
+  module: github.com/acme/orders-web
+  type: web
+database:
+  driver: ` + driver + `
+`)
+
+			r, err := Load(path)
+
+			s.Require().NoError(err)
+			s.Require().Equal(driver, r.Database.Driver)
+		})
+	}
+}
+
+func (s *RecipeTestSuite) TestLoadAcceptsMultipleDatabaseDrivers() {
+	path := s.writeRecipe(`version: v1
+project:
+  name: orders-web
+  module: github.com/acme/orders-web
+  type: web
+sql_database: postgres
+orm_framework: sql
+nosql_database:
+  - redis
+  - mongodb
+migrations: migrate
+`)
+
+	r, err := Load(path)
+
+	s.Require().NoError(err)
+	s.Require().Equal(DatabaseDriverPostgres, r.Database.Driver)
+	s.Require().Equal([]string{DatabaseDriverPostgres, DatabaseDriverRedis, DatabaseDriverMongoDB}, r.Database.Drivers)
+	s.Require().Equal(DatabaseFrameworkDatabaseSQL, r.Database.Framework)
+}
+
+func (s *RecipeTestSuite) TestLoadAcceptsLegacyDatabaseRoot() {
+	path := s.writeRecipe(`version: v1
+project:
+  name: orders-web
+  module: github.com/acme/orders-web
+  type: web
+database:
+  driver: postgres
+  framework: pgx
+  migrations: goose
+`)
+
+	r, err := Load(path)
+
+	s.Require().NoError(err)
+	s.Require().Equal(DatabaseDriverPostgres, r.Database.Driver)
+	s.Require().Equal(DatabaseFrameworkPGX, r.Database.Framework)
+	s.Require().Equal(DatabaseMigrationsGoose, r.Database.Migrations)
+}
+
+func (s *RecipeTestSuite) TestLoadCanonicalizesDatabaseSQLFramework() {
+	path := s.writeRecipe(`version: v1
+project:
+  name: orders-web
+  module: github.com/acme/orders-web
+  type: web
+database:
+  driver: postgres
+  framework: database/sql
+`)
+
+	r, err := Load(path)
+
+	s.Require().NoError(err)
+	s.Require().Equal(DatabaseFrameworkDatabaseSQL, r.Database.Framework)
+}
+
 func (s *RecipeTestSuite) TestLoadMissingModule() {
 	path := s.writeRecipe(`version: v1
 project:
@@ -188,15 +267,58 @@ database:
 	s.Require().Contains(err.Error(), "database.framework=pgx is only supported with database.driver=postgres")
 }
 
+func (s *RecipeTestSuite) TestLoadRejectsNoSQLFrameworkAndMigrations() {
+	path := s.writeRecipe(`version: v1
+project:
+  name: orders-web
+  module: github.com/acme/orders-web
+  type: web
+database:
+  driver: redis
+  framework: gorm
+  migrations: migrate
+`)
+
+	_, err := Load(path)
+
+	s.Require().Error(err)
+	s.Require().Contains(err.Error(), "database.framework=gorm is only supported with SQL database drivers")
+	s.Require().Contains(err.Error(), "database.migrations=migrate is only supported with SQL database drivers")
+}
+
+func (s *RecipeTestSuite) TestLoadAcceptsMultipleSQLDrivers() {
+	path := s.writeRecipe(`version: v1
+project:
+  name: orders-web
+  module: github.com/acme/orders-web
+  type: web
+database:
+  drivers:
+    - postgres
+    - mysql
+`)
+
+	r, err := Load(path)
+
+	s.Require().NoError(err)
+	s.Require().Equal([]string{DatabaseDriverPostgres, DatabaseDriverMySQL}, r.Database.Drivers)
+	s.Require().Equal(DatabaseFrameworkDatabaseSQL, r.Database.Framework)
+}
+
 func (s *RecipeTestSuite) TestDatabasePresetsAreValid() {
-	for _, name := range []string{PresetWebPostgres, PresetWebMySQL, PresetWebSQLite} {
+	for _, name := range []string{PresetWebPostgres, PresetWebMySQL, PresetWebSQLite, PresetWebRedis, PresetWebMongoDB} {
 		s.Run(name, func() {
 			r, err := NewPreset(name)
 
 			s.Require().NoError(err)
 			s.Require().NoError(Validate(r))
 			s.Require().Equal(ProjectTypeWeb, r.Project.Type)
-			s.Require().Equal(DatabaseMigrationsMigrate, r.Database.Migrations)
+			if r.Database.Driver == DatabaseDriverRedis || r.Database.Driver == DatabaseDriverMongoDB {
+				s.Require().Equal(DatabaseFrameworkNone, r.Database.Framework)
+				s.Require().Equal(DatabaseMigrationsNone, r.Database.Migrations)
+			} else {
+				s.Require().Equal(DatabaseMigrationsMigrate, r.Database.Migrations)
+			}
 		})
 	}
 }
@@ -226,17 +348,48 @@ func (s *RecipeTestSuite) TestSaveUsesSnakeCaseYAMLKeys() {
 	output := string(data)
 	s.Require().Contains(output, "graceful_shutdown:")
 	s.Require().Contains(output, "framework: slog")
+	s.Require().Contains(output, "sql_database: none")
+	s.Require().Contains(output, "nosql_database: none")
 	s.Require().Contains(output, "request_logging:")
 	s.Require().Contains(output, "github_actions:")
 	s.Require().Contains(output, "gitlab_ci:")
 	s.Require().Contains(output, "version: v1\n\nproject:")
 	s.Require().Contains(output, "\nproject:\n  name:")
 	s.Require().Contains(output, "\nproject:\n  name: orders-web\n  module:")
+	s.Require().NotContains(output, "\ndatabase:")
+	s.Require().NotContains(output, "orm_framework: none")
 	s.Require().NotContains(output, "    name:")
 	s.Require().NotContains(output, "gracefulShutdown")
 	s.Require().NotContains(output, "provider:")
 	s.Require().NotContains(output, "requestLogging")
 	s.Require().NotContains(output, "githubActions")
+}
+
+func (s *RecipeTestSuite) TestSaveOmitsNoSQLFrameworkAndMigrations() {
+	path := filepath.Join(s.T().TempDir(), "crego.yaml")
+	r := &Recipe{
+		Version: VersionV1,
+		Project: ProjectConfig{
+			Name:   "orders-web",
+			Module: "github.com/acme/orders-web",
+			Type:   ProjectTypeWeb,
+		},
+		Database: DatabaseConfig{
+			Driver: DatabaseDriverRedis,
+		},
+	}
+
+	err := Save(path, r)
+
+	s.Require().NoError(err)
+	data, err := os.ReadFile(path)
+	s.Require().NoError(err)
+	output := string(data)
+	s.Require().Contains(output, "sql_database: none")
+	s.Require().Contains(output, "nosql_database: redis")
+	s.Require().NotContains(output, "\ndatabase:")
+	s.Require().NotContains(output, "orm_framework:")
+	s.Require().NotContains(output, "migrations:")
 }
 
 func (s *RecipeTestSuite) writeRecipe(contents string) string {

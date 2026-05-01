@@ -36,6 +36,8 @@ var (
 		recipe.DatabaseDriverPostgres: component.IDDatabasePostgres,
 		recipe.DatabaseDriverMySQL:    component.IDDatabaseMySQL,
 		recipe.DatabaseDriverSQLite:   component.IDDatabaseSQLite,
+		recipe.DatabaseDriverRedis:    component.IDDatabaseRedis,
+		recipe.DatabaseDriverMongoDB:  component.IDDatabaseMongoDB,
 	}
 
 	databaseFrameworkComponentIDs = map[string]string{
@@ -95,7 +97,7 @@ func Resolve(registry *component.Registry, source *recipe.Recipe) (*Plan, error)
 		return nil, err
 	}
 
-	return buildPlan(registry, selected), nil
+	return buildPlan(registry, selected, &resolved), nil
 }
 
 func mappedComponentIDs(r *recipe.Recipe) []string {
@@ -117,11 +119,17 @@ func mappedComponentIDs(r *recipe.Recipe) []string {
 		add(mappedID(configurationFormatComponentIDs, component.CategoryConfiguration, r.Configuration.Format))
 	}
 
-	add(mappedID(databaseDriverComponentIDs, component.CategoryDatabase, r.Database.Driver))
+	for _, driver := range recipe.DatabaseDrivers(r.Database) {
+		add(mappedID(databaseDriverComponentIDs, component.CategoryDatabase, driver))
+	}
 	if r.Database.Framework != "" && r.Database.Framework != recipe.DatabaseFrameworkNone {
 		add(mappedID(databaseFrameworkComponentIDs, component.CategoryDatabaseFramework, r.Database.Framework))
 	}
-	add(mappedID(databaseMigrationsComponentIDs, component.CategoryMigrations, r.Database.Migrations))
+	if r.Database.Migrations != "" && r.Database.Migrations != recipe.DatabaseMigrationsNone {
+		add(mappedID(databaseMigrationsComponentIDs, component.CategoryMigrations, r.Database.Migrations))
+	} else if len(recipe.DatabaseDrivers(r.Database)) == 1 && recipe.DatabaseDrivers(r.Database)[0] == recipe.DatabaseDriverNone {
+		add(mappedID(databaseMigrationsComponentIDs, component.CategoryMigrations, recipe.DatabaseMigrationsNone))
+	}
 
 	if r.Logging.Framework != "" {
 		add(mappedID(loggingFrameworkComponentIDs, component.CategoryLogging, r.Logging.Framework))
@@ -210,7 +218,7 @@ func validateConflicts(registry *component.Registry, selected map[string]struct{
 	return nil
 }
 
-func buildPlan(registry *component.Registry, selected map[string]struct{}) *Plan {
+func buildPlan(registry *component.Registry, selected map[string]struct{}, r *recipe.Recipe) *Plan {
 	plan := &Plan{}
 	seenFiles := make(map[string]struct{})
 	seenGoModules := make(map[string]struct{})
@@ -247,8 +255,69 @@ func buildPlan(registry *component.Registry, selected map[string]struct{}) *Plan
 			plan.Hooks = append(plan.Hooks, hook)
 		}
 	}
+	for _, module := range databaseGoModules(r) {
+		key := module.Path + "\x00" + module.Version
+		if _, ok := seenGoModules[key]; ok {
+			continue
+		}
+		seenGoModules[key] = struct{}{}
+		plan.GoModules = append(plan.GoModules, module)
+	}
 
 	return plan
+}
+
+func databaseGoModules(r *recipe.Recipe) []component.GoModule {
+	if r == nil {
+		return nil
+	}
+
+	modules := make([]component.GoModule, 0, 6)
+	add := func(path string, version string) {
+		modules = append(modules, component.GoModule{Path: path, Version: version})
+	}
+
+	for _, driver := range recipe.DatabaseDrivers(r.Database) {
+		switch driver {
+		case recipe.DatabaseDriverPostgres:
+			switch r.Database.Framework {
+			case recipe.DatabaseFrameworkPGX, recipe.DatabaseFrameworkDatabaseSQL:
+				add("github.com/jackc/pgx/v5", "v5.9.2")
+			case recipe.DatabaseFrameworkGORM:
+				add("gorm.io/gorm", "v1.31.1")
+				add("gorm.io/driver/postgres", "v1.6.0")
+			}
+		case recipe.DatabaseDriverMySQL:
+			switch r.Database.Framework {
+			case recipe.DatabaseFrameworkDatabaseSQL:
+				add("github.com/go-sql-driver/mysql", "v1.9.3")
+			case recipe.DatabaseFrameworkGORM:
+				add("gorm.io/gorm", "v1.31.1")
+				add("gorm.io/driver/mysql", "v1.6.0")
+			}
+		case recipe.DatabaseDriverSQLite:
+			switch r.Database.Framework {
+			case recipe.DatabaseFrameworkDatabaseSQL:
+				add("modernc.org/sqlite", "v1.48.2")
+			case recipe.DatabaseFrameworkGORM:
+				add("gorm.io/gorm", "v1.31.1")
+				add("gorm.io/driver/sqlite", "v1.6.0")
+			}
+		case recipe.DatabaseDriverRedis:
+			add("github.com/redis/go-redis/v9", "v9.17.2")
+		case recipe.DatabaseDriverMongoDB:
+			add("go.mongodb.org/mongo-driver/v2", "v2.5.1")
+		}
+	}
+
+	switch r.Database.Migrations {
+	case recipe.DatabaseMigrationsGoose:
+		add("github.com/pressly/goose/v3", "v3.27.1")
+	case recipe.DatabaseMigrationsMigrate:
+		add("github.com/golang-migrate/migrate/v4", "v4.19.1")
+	}
+
+	return modules
 }
 
 func isSelected(selected map[string]struct{}, id string) bool {

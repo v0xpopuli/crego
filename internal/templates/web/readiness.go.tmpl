@@ -1,0 +1,34 @@
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+package app
+{{ else -}}
+package server
+{{ end }}
+
+import (
+	"context"
+	"time"
+)
+
+type Checker interface {
+	Ping(context.Context) error
+}
+
+type Checks []Checker
+
+func (checks Checks) Ping(ctx context.Context) error {
+	for _, checker := range checks {
+		if err := Check(ctx, checker); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func Check(ctx context.Context, checker Checker) error {
+	if checker == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	return checker.Ping(ctx)
+}
