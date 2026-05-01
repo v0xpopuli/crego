@@ -20,6 +20,7 @@ var componentCategoryOrder = []string{
 	component.CategoryORMFramework,
 	component.CategoryNoSQLDatabase,
 	component.CategoryMigrations,
+	component.CategoryTaskScheduler,
 	component.CategoryLogging,
 	component.CategoryObservability,
 	component.CategoryDeployment,

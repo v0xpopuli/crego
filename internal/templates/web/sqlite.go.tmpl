@@ -17,18 +17,14 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 {{ end }}
-{{ if ne .Recipe.Layout.Style "minimal" -}}
+{{ if ne .Recipe.Layout.Style "minimal" }}
+	"{{ .ModulePath }}/internal/config"
 	"{{ .ModulePath }}/internal/logging"
 {{ end -}}
 )
 
-type SQLiteConfig struct {
-	URL        string
-	Migrations string
-}
-
 type SQLiteClient struct {
-	config SQLiteConfig
+	config {{ if eq .Recipe.Layout.Style "minimal" }}SQLiteConfig{{ else }}config.SQLiteConfig{{ end }}
 	address string
 	logger  {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}
 {{ if eq .Recipe.Database.Framework "sql" }}
@@ -40,7 +36,7 @@ type SQLiteClient struct {
 {{ end }}
 }
 
-func NewSQLiteClient(ctx context.Context, cfg SQLiteConfig, logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) (*SQLiteClient, error) {
+func NewSQLiteClient(ctx context.Context, cfg {{ if eq .Recipe.Layout.Style "minimal" }}SQLiteConfig{{ else }}config.SQLiteConfig{{ end }}, logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) (*SQLiteClient, error) {
 	if cfg.URL == "" {
 		return nil, fmt.Errorf("database_url is required")
 	}

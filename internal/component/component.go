@@ -11,6 +11,7 @@ const (
 	CategoryORMFramework      = "orm_framework"
 	CategoryNoSQLDatabase     = "nosql_database"
 	CategoryMigrations        = "migrations"
+	CategoryTaskScheduler     = "task_scheduler"
 	CategoryLogging           = "logging"
 	CategoryObservability     = "observability"
 	CategoryDeployment        = "deployment"
@@ -47,6 +48,9 @@ const (
 	IDMigrationsNone    = "migrations.none"
 	IDMigrationsGoose   = "migrations.goose"
 	IDMigrationsMigrate = "migrations.migrate"
+
+	IDTaskSchedulerNone   = "task_scheduler.none"
+	IDTaskSchedulerGocron = "task_scheduler.gocron"
 
 	IDLoggingSlog    = "logging.slog"
 	IDLoggingZap     = "logging.zap"

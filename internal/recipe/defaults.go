@@ -6,6 +6,7 @@ const (
 	defaultServerFramework  = ServerFrameworkNetHTTP
 	defaultServerPort       = 8080
 	defaultConfigFormat     = ConfigurationFormatEnv
+	defaultTaskScheduler    = TaskSchedulerNone
 	defaultLoggingFramework = LoggingFrameworkSlog
 	defaultLoggingFormat    = LoggingFormatText
 )
@@ -39,6 +40,9 @@ func ApplyDefaults(r *Recipe) *Recipe {
 
 	if r.Configuration.Format == "" {
 		r.Configuration.Format = defaultConfigFormat
+	}
+	if r.TaskScheduler == "" {
+		r.TaskScheduler = defaultTaskScheduler
 	}
 
 	if r.Database.Driver == "" {

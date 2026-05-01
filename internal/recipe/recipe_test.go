@@ -33,6 +33,7 @@ server:
   graceful_shutdown: true
 configuration:
   format: yaml
+task_scheduler: gocron
 database:
   sql: postgres
   orm_framework: pgx
@@ -61,6 +62,7 @@ ci:
 	s.Require().Equal("orders-web", r.Project.Name)
 	s.Require().Equal(ServerFrameworkChi, r.Server.Framework)
 	s.Require().Equal(ConfigurationFormatYAML, r.Configuration.Format)
+	s.Require().Equal(TaskSchedulerGocron, r.TaskScheduler)
 	s.Require().Equal(DatabaseDriverPostgres, r.Database.Driver)
 	s.Require().Equal(LoggingFormatJSON, r.Logging.Format)
 }
@@ -82,6 +84,7 @@ project:
 	s.Require().Equal(8080, r.Server.Port)
 	s.Require().True(r.Server.GracefulShutdown)
 	s.Require().Equal(ConfigurationFormatEnv, r.Configuration.Format)
+	s.Require().Equal(TaskSchedulerNone, r.TaskScheduler)
 	s.Require().Equal(DatabaseDriverNone, r.Database.Driver)
 	s.Require().Equal(DatabaseFrameworkNone, r.Database.Framework)
 	s.Require().Equal(DatabaseMigrationsNone, r.Database.Migrations)
@@ -104,6 +107,22 @@ server:
 	s.Require().Error(err)
 	s.Require().Contains(err.Error(), "server.framework=martini is invalid")
 	s.Require().Contains(err.Error(), "allowed values: nethttp, chi, gin, echo, fiber")
+}
+
+func (s *RecipeTestSuite) TestLoadRejectsUnknownTaskScheduler() {
+	path := s.writeRecipe(`version: v1
+project:
+  name: orders-web
+  module: github.com/acme/orders-web
+  type: web
+task_scheduler: quartz
+`)
+
+	_, err := Load(path)
+
+	s.Require().Error(err)
+	s.Require().Contains(err.Error(), "task_scheduler=quartz is invalid")
+	s.Require().Contains(err.Error(), "allowed values: none, gocron")
 }
 
 func (s *RecipeTestSuite) TestLoadRejectsLoggingProviderField() {
@@ -393,6 +412,7 @@ func (s *RecipeTestSuite) TestSaveUsesSnakeCaseYAMLKeys() {
 	s.Require().Contains(output, "database:")
 	s.Require().Contains(output, "  sql: none")
 	s.Require().Contains(output, "  nosql: none")
+	s.Require().Contains(output, "task_scheduler: none")
 	s.Require().Contains(output, "request_logging:")
 	s.Require().Contains(output, "github_actions:")
 	s.Require().Contains(output, "gitlab_ci:")

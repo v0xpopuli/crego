@@ -9,22 +9,19 @@ import (
 	"fmt"
 
 	"github.com/redis/go-redis/v9"
-{{ if ne .Recipe.Layout.Style "minimal" -}}
+{{ if ne .Recipe.Layout.Style "minimal" }}
+	"{{ .ModulePath }}/internal/config"
 	"{{ .ModulePath }}/internal/logging"
 {{ end -}}
 )
 
-type RedisConfig struct {
-	Address string
-}
-
 type RedisClient struct {
-	config RedisConfig
+	config {{ if eq .Recipe.Layout.Style "minimal" }}RedisConfig{{ else }}config.RedisConfig{{ end }}
 	logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}
 	Client *redis.Client
 }
 
-func NewRedisClient(ctx context.Context, cfg RedisConfig, logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) (*RedisClient, error) {
+func NewRedisClient(ctx context.Context, cfg {{ if eq .Recipe.Layout.Style "minimal" }}RedisConfig{{ else }}config.RedisConfig{{ end }}, logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) (*RedisClient, error) {
 	if cfg.Address == "" {
 		return nil, fmt.Errorf("redis_address is required")
 	}

@@ -15,6 +15,7 @@ func Normalize(r *Recipe) *Recipe {
 	r.Layout.Style = normalizeEnum(r.Layout.Style)
 	r.Server.Framework = normalizeEnum(r.Server.Framework)
 	r.Configuration.Format = normalizeEnum(r.Configuration.Format)
+	r.TaskScheduler = normalizeEnum(r.TaskScheduler)
 	r.SQLDatabase = normalizeEnum(r.SQLDatabase)
 	r.ORMFramework = normalizeEnum(r.ORMFramework)
 	for index, driver := range r.NoSQLDatabase {

@@ -45,6 +45,9 @@ const (
 	DatabaseMigrationsGoose   = "goose"
 	DatabaseMigrationsMigrate = "migrate"
 
+	TaskSchedulerNone   = "none"
+	TaskSchedulerGocron = "gocron"
+
 	LoggingFrameworkSlog    = "slog"
 	LoggingFrameworkZap     = "zap"
 	LoggingFrameworkZerolog = "zerolog"
@@ -75,6 +78,7 @@ type (
 		NoSQLDatabase NoSQLDrivers        `yaml:"nosql_database,omitempty"`
 		Migrations    string              `yaml:"migrations,omitempty"`
 		Database      DatabaseConfig      `yaml:"database,omitempty"`
+		TaskScheduler string              `yaml:"task_scheduler"`
 		Logging       LoggingConfig       `yaml:"logging"`
 		Observability ObservabilityConfig `yaml:"observability"`
 		Deployment    DeploymentConfig    `yaml:"deployment"`
@@ -154,6 +158,7 @@ func (r Recipe) MarshalYAML() (any, error) {
 		Server        ServerConfig        `yaml:"server,omitempty"`
 		Configuration ConfigurationConfig `yaml:"configuration"`
 		Database      DatabaseConfig      `yaml:"database"`
+		TaskScheduler string              `yaml:"task_scheduler"`
 		Logging       LoggingConfig       `yaml:"logging"`
 		Observability ObservabilityConfig `yaml:"observability"`
 		Deployment    DeploymentConfig    `yaml:"deployment"`
@@ -168,6 +173,7 @@ func (r Recipe) MarshalYAML() (any, error) {
 		Server:        resolved.Server,
 		Configuration: resolved.Configuration,
 		Database:      resolved.Database,
+		TaskScheduler: resolved.TaskScheduler,
 		Logging:       resolved.Logging,
 		Observability: resolved.Observability,
 		Deployment:    resolved.Deployment,

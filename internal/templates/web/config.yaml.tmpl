@@ -1,21 +1,45 @@
 app_env: development
-http_port: {{ .Recipe.Server.Port }}
-log_format: {{ .Recipe.Logging.Format }}
+server:
+  port: {{ .Recipe.Server.Port }}
+logging:
+  format: {{ .Recipe.Logging.Format }}
+{{ if anyDatabaseEnabled }}
+database:
 {{ if hasDatabase "postgres" }}
-postgres_url: postgres://postgres:postgres@localhost:5432/app?sslmode=disable
+  postgres:
+    url: postgres://postgres:postgres@localhost:5432/app?sslmode=disable
+{{ if sqlMigrations .Recipe.Database.Migrations }}    migrations: file://scripts/migrations
+{{ end -}}
 {{ end -}}
 {{ if hasDatabase "mysql" }}
-mysql_url: mysql://root:root@tcp(localhost:3306)/app?parseTime=true
+  mysql:
+    url: mysql://root:root@tcp(localhost:3306)/app?parseTime=true
+{{ if sqlMigrations .Recipe.Database.Migrations }}    migrations: file://scripts/migrations
+{{ end -}}
 {{ end -}}
 {{ if hasDatabase "sqlite" }}
-sqlite_url: file:app.db?_foreign_keys=on
+  sqlite:
+    url: file:app.db?_foreign_keys=on
+{{ if sqlMigrations .Recipe.Database.Migrations }}    migrations: file://scripts/migrations
 {{ end -}}
-{{ if and (anySQLDatabaseEnabled) (sqlMigrations .Recipe.Database.Migrations) }}
-database_migrations: file://scripts/migrations
 {{ end -}}
 {{ if hasDatabase "redis" }}
-redis_address: localhost:6379
+  redis:
+    address: localhost:6379
 {{ end -}}
 {{ if hasDatabase "mongodb" }}
-mongodb_uri: mongodb://localhost:27017/app
+  mongodb:
+    uri: mongodb://localhost:27017/app
+{{ end -}}
+{{ end -}}
+{{ if schedulerEnabled }}
+task_scheduler:
+  worker: crego-task-executor
+  tasks:
+    example_cleanup:
+      name: example-cleanup
+      cron: "0 2 * * *"
+      should_start_immediately: false
+      batch_size: 500
+      retention_period: 72h
 {{ end -}}
