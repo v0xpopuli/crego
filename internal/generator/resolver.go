@@ -160,6 +160,9 @@ func mappedComponentIDs(r *recipe.Recipe) []string {
 	if r.CI.GitLabCI {
 		add(component.IDCIGitLabCI)
 	}
+	if r.CI.AzurePipelines {
+		add(component.IDCIAzurePipelines)
+	}
 
 	return ids
 }

@@ -63,8 +63,9 @@ const (
 	IDDeploymentDocker  = "deployment.docker"
 	IDDeploymentCompose = "deployment.compose"
 
-	IDCIGitHubActions = "ci.github_actions"
-	IDCIGitLabCI      = "ci.gitlab_ci"
+	IDCIGitHubActions  = "ci.github_actions"
+	IDCIGitLabCI       = "ci.gitlab_ci"
+	IDCIAzurePipelines = "ci.azure_pipelines"
 )
 
 type (

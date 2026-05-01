@@ -160,6 +160,7 @@ func (s *CliTestSuite) TestRecipePrintCommand() {
 		s.Require().Contains(out, "request_logging:")
 		s.Require().Contains(out, "github_actions:")
 		s.Require().Contains(out, "gitlab_ci:")
+		s.Require().Contains(out, "azure_pipelines:")
 		s.Require().Contains(out, "database:")
 		s.Require().Contains(out, "  sql: postgres")
 		s.Require().Contains(out, "  orm_framework:")

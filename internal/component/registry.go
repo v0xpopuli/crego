@@ -266,6 +266,13 @@ func defaultComponents() []Component {
 			Description: "GitLab CI pipeline.",
 			Files:       []TemplateFile{{Source: "web/gitlab-ci.yml.tmpl", Target: ".gitlab-ci.yml"}},
 		},
+		{
+			ID:          IDCIAzurePipelines,
+			Category:    CategoryCI,
+			Name:        "Azure Pipelines",
+			Description: "Azure Pipelines workflow.",
+			Files:       []TemplateFile{{Source: "web/azure-pipelines.yml.tmpl", Target: "azure-pipelines.yml"}},
+		},
 	}
 }
 
