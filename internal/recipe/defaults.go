@@ -62,6 +62,15 @@ func ApplyDefaults(r *Recipe) *Recipe {
 	r.ORMFramework = r.Database.Framework
 	r.NoSQLDatabase = noSQLDatabaseDrivers(r.Database.Drivers)
 	r.Migrations = r.Database.Migrations
+	if r.Database.SQL == "" {
+		r.Database.SQL = r.SQLDatabase
+	}
+	if r.Database.ORMFramework == "" {
+		r.Database.ORMFramework = r.Database.Framework
+	}
+	if len(r.Database.NoSQL) == 0 {
+		r.Database.NoSQL = append([]string(nil), r.NoSQLDatabase...)
+	}
 
 	if r.Logging.Framework == "" {
 		r.Logging.Framework = defaultLoggingFramework

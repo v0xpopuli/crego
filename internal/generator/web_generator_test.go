@@ -491,7 +491,7 @@ func (s *WebGeneratorTestSuite) TestRendersRepresentativeDatabaseCompileFixtures
 
 func (s *WebGeneratorTestSuite) TestGeneratesMultipleDatabaseProject() {
 	r := webRecipe(recipe.LayoutStyleLayered, recipe.ServerFrameworkChi, recipe.ConfigurationFormatYAML, recipe.LoggingFrameworkSlog)
-	r.Database.Drivers = []string{recipe.DatabaseDriverPostgres, recipe.DatabaseDriverMySQL, recipe.DatabaseDriverRedis, recipe.DatabaseDriverMongoDB}
+	r.Database.Drivers = []string{recipe.DatabaseDriverPostgres, recipe.DatabaseDriverRedis, recipe.DatabaseDriverMongoDB}
 	r.Database.Framework = recipe.DatabaseFrameworkDatabaseSQL
 	r.Database.Migrations = recipe.DatabaseMigrationsMigrate
 	plan, err := Resolve(component.NewRegistry(), r)
@@ -502,26 +502,21 @@ func (s *WebGeneratorTestSuite) TestGeneratesMultipleDatabaseProject() {
 	s.Require().NoError(err)
 
 	s.Require().FileExists(filepath.Join(outDir, "internal/database/postgres.go"))
-	s.Require().FileExists(filepath.Join(outDir, "internal/database/mysql.go"))
 	s.Require().FileExists(filepath.Join(outDir, "internal/database/redis.go"))
 	s.Require().FileExists(filepath.Join(outDir, "internal/database/mongodb.go"))
 	s.Require().FileExists(filepath.Join(outDir, "scripts/migrations/000001_init.up.sql"))
 	s.requireNoGeneratedFile(outDir, "cmd/orders-api-migrate/main.go")
 	configGo := s.readGenerated(outDir, "internal/config/config.go")
 	s.Require().Contains(configGo, "PostgresURL")
-	s.Require().Contains(configGo, "MySQLURL")
 	s.Require().Contains(configGo, "RedisAddress")
 	s.Require().Contains(configGo, "MongoDBURI")
 	appGo := s.readGenerated(outDir, "internal/app/app.go")
 	s.Require().Contains(appGo, "postgresClient *database.PostgresClient")
-	s.Require().Contains(appGo, "mysqlClient *database.MySQLClient")
 	s.Require().Contains(appGo, "redisClient *database.RedisClient")
 	s.Require().Contains(appGo, "mongoDBClient *database.MongoDBClient")
 	s.Require().Contains(appGo, "readinessChecks(")
 	s.Require().Contains(appGo, "a.postgresClient.RunMigrations(a.ctx)")
-	s.Require().Contains(appGo, "a.mysqlClient.RunMigrations(a.ctx)")
 	s.Require().Contains(appGo, "postgresClient:")
-	s.Require().Contains(appGo, "mysqlClient:")
 	s.Require().Contains(appGo, "redisClient:")
 	s.Require().Contains(appGo, "mongoDBClient:")
 	s.Require().NotContains(appGo, "newPostgresClient")

@@ -60,6 +60,12 @@ func Validate(r *Recipe) error {
 	for _, driver := range drivers {
 		problems = appendEnumProblem(problems, "database.driver", driver, databaseDriverValues())
 	}
+	if r.Database.SQL != "" {
+		problems = appendEnumProblem(problems, "database.sql", r.Database.SQL, databaseSQLDriverValues())
+	}
+	for _, driver := range r.Database.NoSQL {
+		problems = appendEnumProblem(problems, "database.nosql", driver, databaseNoSQLDriverValues())
+	}
 	problems = appendEnumProblem(problems, "database.framework", r.Database.Framework, databaseFrameworkValues())
 	problems = appendEnumProblem(problems, "database.migrations", r.Database.Migrations, databaseMigrationValues())
 	problems = appendEnumProblem(problems, "logging.framework", r.Logging.Framework, loggingFrameworkValues())
@@ -85,6 +91,9 @@ func appendDatabaseCompatibilityProblems(problems []string, database DatabaseCon
 		problems = append(problems, "database.driver=none cannot be combined with other database drivers")
 	}
 	sqlDrivers := sqlDatabaseDrivers(drivers)
+	if len(sqlDrivers) > 1 {
+		problems = append(problems, "database.sql supports only one SQL database driver")
+	}
 	if len(sqlDrivers) == 0 && (database.Framework != "" && database.Framework != DatabaseFrameworkNone) {
 		problems = append(problems, "database.framework="+database.Framework+" is only supported with SQL database drivers")
 	}
@@ -194,6 +203,14 @@ func configurationFormatValues() []string {
 
 func databaseDriverValues() []string {
 	return []string{DatabaseDriverNone, DatabaseDriverPostgres, DatabaseDriverMySQL, DatabaseDriverSQLite, DatabaseDriverRedis, DatabaseDriverMongoDB}
+}
+
+func databaseSQLDriverValues() []string {
+	return []string{DatabaseDriverNone, DatabaseDriverPostgres, DatabaseDriverMySQL, DatabaseDriverSQLite}
+}
+
+func databaseNoSQLDriverValues() []string {
+	return []string{DatabaseDriverRedis, DatabaseDriverMongoDB}
 }
 
 func databaseFrameworkValues() []string {

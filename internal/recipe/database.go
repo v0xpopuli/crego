@@ -32,6 +32,13 @@ func (drivers *NoSQLDrivers) UnmarshalYAML(value *yaml.Node) error {
 
 func DatabaseDrivers(database DatabaseConfig) []string {
 	raw := database.Drivers
+	if len(raw) == 0 && (database.SQL != "" || len(database.NoSQL) > 0) {
+		raw = make([]string, 0, 1+len(database.NoSQL))
+		if database.SQL != "" && database.SQL != DatabaseDriverNone {
+			raw = append(raw, database.SQL)
+		}
+		raw = append(raw, database.NoSQL...)
+	}
 	if len(raw) == 0 && database.Driver != "" {
 		raw = []string{database.Driver}
 	}

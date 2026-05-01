@@ -34,9 +34,10 @@ server:
 configuration:
   format: yaml
 database:
-  driver: postgres
-  framework: pgx
+  sql: postgres
+  orm_framework: pgx
   migrations: goose
+  nosql: none
 logging:
   framework: slog
   format: json
@@ -167,12 +168,13 @@ project:
   name: orders-web
   module: github.com/acme/orders-web
   type: web
-sql_database: postgres
-orm_framework: sql
-nosql_database:
-  - redis
-  - mongodb
-migrations: migrate
+database:
+  sql: postgres
+  orm_framework: sql
+  migrations: migrate
+  nosql:
+    - redis
+    - mongodb
 `)
 
 	r, err := Load(path)
@@ -201,6 +203,28 @@ database:
 	s.Require().Equal(DatabaseDriverPostgres, r.Database.Driver)
 	s.Require().Equal(DatabaseFrameworkPGX, r.Database.Framework)
 	s.Require().Equal(DatabaseMigrationsGoose, r.Database.Migrations)
+}
+
+func (s *RecipeTestSuite) TestLoadAcceptsLegacyTopLevelDatabaseFields() {
+	path := s.writeRecipe(`version: v1
+project:
+  name: orders-web
+  module: github.com/acme/orders-web
+  type: web
+sql_database: postgres
+orm_framework: sql
+nosql_database:
+  - redis
+  - mongodb
+migrations: migrate
+`)
+
+	r, err := Load(path)
+
+	s.Require().NoError(err)
+	s.Require().Equal(DatabaseDriverPostgres, r.Database.Driver)
+	s.Require().Equal([]string{DatabaseDriverPostgres, DatabaseDriverRedis, DatabaseDriverMongoDB}, r.Database.Drivers)
+	s.Require().Equal(DatabaseFrameworkDatabaseSQL, r.Database.Framework)
 }
 
 func (s *RecipeTestSuite) TestLoadCanonicalizesDatabaseSQLFramework() {
@@ -286,7 +310,7 @@ database:
 	s.Require().Contains(err.Error(), "database.migrations=migrate is only supported with SQL database drivers")
 }
 
-func (s *RecipeTestSuite) TestLoadAcceptsMultipleSQLDrivers() {
+func (s *RecipeTestSuite) TestLoadRejectsMultipleSQLDrivers() {
 	path := s.writeRecipe(`version: v1
 project:
   name: orders-web
@@ -298,11 +322,29 @@ database:
     - mysql
 `)
 
-	r, err := Load(path)
+	_, err := Load(path)
 
-	s.Require().NoError(err)
-	s.Require().Equal([]string{DatabaseDriverPostgres, DatabaseDriverMySQL}, r.Database.Drivers)
-	s.Require().Equal(DatabaseFrameworkDatabaseSQL, r.Database.Framework)
+	s.Require().Error(err)
+	s.Require().Contains(err.Error(), "database.sql supports only one SQL database driver")
+}
+
+func (s *RecipeTestSuite) TestLoadRejectsDatabaseCategoryMixups() {
+	path := s.writeRecipe(`version: v1
+project:
+  name: orders-web
+  module: github.com/acme/orders-web
+  type: web
+database:
+  sql: redis
+  nosql:
+    - postgres
+`)
+
+	_, err := Load(path)
+
+	s.Require().Error(err)
+	s.Require().Contains(err.Error(), "database.sql=redis is invalid")
+	s.Require().Contains(err.Error(), "database.nosql=postgres is invalid")
 }
 
 func (s *RecipeTestSuite) TestDatabasePresetsAreValid() {
@@ -348,15 +390,15 @@ func (s *RecipeTestSuite) TestSaveUsesSnakeCaseYAMLKeys() {
 	output := string(data)
 	s.Require().Contains(output, "graceful_shutdown:")
 	s.Require().Contains(output, "framework: slog")
-	s.Require().Contains(output, "sql_database: none")
-	s.Require().Contains(output, "nosql_database: none")
+	s.Require().Contains(output, "database:")
+	s.Require().Contains(output, "  sql: none")
+	s.Require().Contains(output, "  nosql: none")
 	s.Require().Contains(output, "request_logging:")
 	s.Require().Contains(output, "github_actions:")
 	s.Require().Contains(output, "gitlab_ci:")
 	s.Require().Contains(output, "version: v1\n\nproject:")
 	s.Require().Contains(output, "\nproject:\n  name:")
 	s.Require().Contains(output, "\nproject:\n  name: orders-web\n  module:")
-	s.Require().NotContains(output, "\ndatabase:")
 	s.Require().NotContains(output, "orm_framework: none")
 	s.Require().NotContains(output, "    name:")
 	s.Require().NotContains(output, "gracefulShutdown")
@@ -385,9 +427,9 @@ func (s *RecipeTestSuite) TestSaveOmitsNoSQLFrameworkAndMigrations() {
 	data, err := os.ReadFile(path)
 	s.Require().NoError(err)
 	output := string(data)
-	s.Require().Contains(output, "sql_database: none")
-	s.Require().Contains(output, "nosql_database: redis")
-	s.Require().NotContains(output, "\ndatabase:")
+	s.Require().Contains(output, "database:")
+	s.Require().Contains(output, "  sql: none")
+	s.Require().Contains(output, "  nosql: redis")
 	s.Require().NotContains(output, "orm_framework:")
 	s.Require().NotContains(output, "migrations:")
 }

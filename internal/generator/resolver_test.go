@@ -133,9 +133,9 @@ func (s *ResolverTestSuite) TestResolveWebRedisAndMongoDB() {
 	}
 }
 
-func (s *ResolverTestSuite) TestResolveWebPostgresMySQLRedisMongoDB() {
+func (s *ResolverTestSuite) TestResolveWebPostgresRedisMongoDB() {
 	r := baseRecipe(recipe.ProjectTypeWeb)
-	r.Database.Drivers = []string{recipe.DatabaseDriverPostgres, recipe.DatabaseDriverMySQL, recipe.DatabaseDriverRedis, recipe.DatabaseDriverMongoDB}
+	r.Database.Drivers = []string{recipe.DatabaseDriverPostgres, recipe.DatabaseDriverRedis, recipe.DatabaseDriverMongoDB}
 	r.Database.Framework = recipe.DatabaseFrameworkDatabaseSQL
 	r.Database.Migrations = recipe.DatabaseMigrationsMigrate
 
@@ -144,14 +144,12 @@ func (s *ResolverTestSuite) TestResolveWebPostgresMySQLRedisMongoDB() {
 	s.Require().NoError(err)
 	ids := planComponentIDs(plan)
 	s.Require().Contains(ids, component.IDDatabasePostgres)
-	s.Require().Contains(ids, component.IDDatabaseMySQL)
 	s.Require().Contains(ids, component.IDDatabaseRedis)
 	s.Require().Contains(ids, component.IDDatabaseMongoDB)
 	s.Require().Contains(ids, component.IDDatabaseFrameworkSQL)
 	s.Require().Contains(ids, component.IDMigrationsMigrate)
 	paths := planGoModulePaths(plan)
 	s.Require().Contains(paths, "github.com/jackc/pgx/v5")
-	s.Require().Contains(paths, "github.com/go-sql-driver/mysql")
 	s.Require().Contains(paths, "github.com/redis/go-redis/v9")
 	s.Require().Contains(paths, "go.mongodb.org/mongo-driver/v2")
 	s.Require().Contains(paths, "github.com/golang-migrate/migrate/v4")

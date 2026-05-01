@@ -22,6 +22,12 @@ func Normalize(r *Recipe) *Recipe {
 	}
 	r.Migrations = normalizeEnum(r.Migrations)
 	mergeTopLevelDatabaseConfig(r)
+	r.Database.SQL = normalizeEnum(r.Database.SQL)
+	r.Database.ORMFramework = normalizeEnum(r.Database.ORMFramework)
+	for index, driver := range r.Database.NoSQL {
+		r.Database.NoSQL[index] = normalizeEnum(driver)
+	}
+	mergeNestedDatabaseConfig(r)
 	r.Database.Driver = normalizeEnum(r.Database.Driver)
 	for index, driver := range r.Database.Drivers {
 		r.Database.Drivers[index] = normalizeEnum(driver)
@@ -56,6 +62,24 @@ func mergeTopLevelDatabaseConfig(r *Recipe) {
 	}
 	if r.Migrations != "" {
 		r.Database.Migrations = r.Migrations
+	}
+}
+
+func mergeNestedDatabaseConfig(r *Recipe) {
+	if len(r.Database.Drivers) == 0 && (r.Database.SQL != "" || len(r.Database.NoSQL) > 0) {
+		drivers := make([]string, 0, 1+len(r.Database.NoSQL))
+		if r.Database.SQL != "" && r.Database.SQL != DatabaseDriverNone {
+			drivers = append(drivers, r.Database.SQL)
+		}
+		drivers = append(drivers, r.Database.NoSQL...)
+		if len(drivers) == 0 {
+			drivers = append(drivers, DatabaseDriverNone)
+		}
+		r.Database.Drivers = drivers
+		r.Database.Driver = primaryDatabaseDriver(drivers)
+	}
+	if r.Database.ORMFramework != "" {
+		r.Database.Framework = r.Database.ORMFramework
 	}
 }
 
