@@ -11,7 +11,8 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-
+{{ if schedulerEnabled }}	"time"
+{{ end }}
 {{ if eq .Recipe.Configuration.Format "toml" -}}
 	"github.com/pelletier/go-toml/v2"
 {{ end -}}
@@ -20,22 +21,96 @@ import (
 {{ end -}}
 )
 
-type Config struct {
-	AppEnv    string {{ configTag "app_env" }}
-	HTTPPort  int    {{ configTag "http_port" }}
-	LogFormat string {{ configTag "log_format" }}
-{{ if hasDatabase "postgres" }}	PostgresURL string {{ configTag "postgres_url" }}
-{{ end }}{{ if hasDatabase "mysql" }}	MySQLURL string {{ configTag "mysql_url" }}
-{{ end }}{{ if hasDatabase "sqlite" }}	SQLiteURL string {{ configTag "sqlite_url" }}
-{{ end }}{{ if and (anySQLDatabaseEnabled) (sqlMigrations .Recipe.Database.Migrations) }}	DatabaseMigrations string {{ configTag "database_migrations" }}
-{{ end }}{{ if hasDatabase "redis" }}	RedisAddress string {{ configTag "redis_address" }}
-{{ end }}{{ if hasDatabase "mongodb" }}	MongoDBURI string {{ configTag "mongodb_uri" }}
+type (
+	Config struct {
+		AppEnv string        {{ configTag "app_env" }}
+		Server ServerConfig  {{ configTag "server" }}
+		Logging LoggingConfig {{ configTag "logging" }}
+{{ if anyDatabaseEnabled }}		Database DatabaseConfig {{ configTag "database" }}
 {{ end -}}
-}
+{{ if schedulerEnabled }}		TaskScheduler TaskSchedulerConfig {{ configTag "task_scheduler" }}
+{{ end -}}
+	}
 
-type Options struct {
-	Path string
-}
+	ServerConfig struct {
+		Port int {{ configTag "port" }}
+	}
+
+	LoggingConfig struct {
+		Format string {{ configTag "format" }}
+	}
+
+{{ if anyDatabaseEnabled -}}
+	DatabaseConfig struct {
+{{ if hasDatabase "postgres" }}		Postgres PostgresConfig {{ configTag "postgres" }}
+{{ end -}}
+{{ if hasDatabase "mysql" }}		MySQL MySQLConfig {{ configTag "mysql" }}
+{{ end -}}
+{{ if hasDatabase "sqlite" }}		SQLite SQLiteConfig {{ configTag "sqlite" }}
+{{ end -}}
+{{ if hasDatabase "redis" }}		Redis RedisConfig {{ configTag "redis" }}
+{{ end -}}
+{{ if hasDatabase "mongodb" }}		MongoDB MongoDBConfig {{ configTag "mongodb" }}
+{{ end -}}
+	}
+
+{{ if hasDatabase "postgres" -}}
+	PostgresConfig struct {
+		URL        string {{ configTag "url" }}
+		Migrations string {{ configTag "migrations" }}
+	}
+
+{{ end -}}
+{{ if hasDatabase "mysql" -}}
+	MySQLConfig struct {
+		URL        string {{ configTag "url" }}
+		Migrations string {{ configTag "migrations" }}
+	}
+
+{{ end -}}
+{{ if hasDatabase "sqlite" -}}
+	SQLiteConfig struct {
+		URL        string {{ configTag "url" }}
+		Migrations string {{ configTag "migrations" }}
+	}
+
+{{ end -}}
+{{ if hasDatabase "redis" -}}
+	RedisConfig struct {
+		Address string {{ configTag "address" }}
+	}
+
+{{ end -}}
+{{ if hasDatabase "mongodb" -}}
+	MongoDBConfig struct {
+		URI string {{ configTag "uri" }}
+	}
+
+{{ end -}}
+{{ end -}}
+{{ if schedulerEnabled -}}
+	TaskSchedulerConfig struct {
+		Worker string      {{ configTag "worker" }}
+		Tasks  TaskConfigs {{ configTag "tasks" }}
+	}
+
+	TaskConfigs struct {
+		ExampleCleanup ExampleCleanupTaskConfig {{ configTag "example_cleanup" }}
+	}
+
+	ExampleCleanupTaskConfig struct {
+		Name                   string {{ configTag "name" }}
+		Cron                   string {{ configTag "cron" }}
+		ShouldStartImmediately bool   {{ configTag "should_start_immediately" }}
+		BatchSize              int    {{ configTag "batch_size" }}
+		RetentionPeriod        string {{ configTag "retention_period" }}
+	}
+
+{{ end -}}
+	Options struct {
+		Path string
+	}
+)
 
 func LoadConfig(opts Options) (Config, error) {
 	cfg := defaultConfig()
@@ -74,18 +149,55 @@ func LoadConfig(opts Options) (Config, error) {
 
 func defaultConfig() Config {
 	return Config{
-		AppEnv:    "development",
-		HTTPPort:  {{ .Recipe.Server.Port }},
-		LogFormat: "{{ .Recipe.Logging.Format }}",
-{{ if hasDatabase "postgres" }}		PostgresURL: "postgres://postgres:postgres@localhost:5432/app?sslmode=disable",
-{{ end }}{{ if hasDatabase "mysql" }}		MySQLURL: "mysql://root:root@tcp(localhost:3306)/app?parseTime=true",
-{{ end }}{{ if hasDatabase "sqlite" }}		SQLiteURL: "file:app.db?_foreign_keys=on",
-{{ end }}{{ if and (anySQLDatabaseEnabled) (sqlMigrations .Recipe.Database.Migrations) }}		DatabaseMigrations: "file://scripts/migrations",
-{{ end }}{{ if hasDatabase "redis" }}		RedisAddress: "localhost:6379",
-{{ end }}{{ if hasDatabase "mongodb" }}		MongoDBURI: "mongodb://localhost:27017/app",
+		AppEnv: "development",
+		Server: ServerConfig{
+			Port: {{ .Recipe.Server.Port }},
+		},
+		Logging: LoggingConfig{
+			Format: "{{ .Recipe.Logging.Format }}",
+		},
+{{ if anyDatabaseEnabled }}		Database: DatabaseConfig{
+{{ if hasDatabase "postgres" }}			Postgres: PostgresConfig{
+				URL:        "postgres://postgres:postgres@localhost:5432/app?sslmode=disable",
+				Migrations: {{ if sqlMigrations .Recipe.Database.Migrations }}"file://scripts/migrations"{{ else }}""{{ end }},
+			},
+{{ end -}}
+{{ if hasDatabase "mysql" }}			MySQL: MySQLConfig{
+				URL:        "mysql://root:root@tcp(localhost:3306)/app?parseTime=true",
+				Migrations: {{ if sqlMigrations .Recipe.Database.Migrations }}"file://scripts/migrations"{{ else }}""{{ end }},
+			},
+{{ end -}}
+{{ if hasDatabase "sqlite" }}			SQLite: SQLiteConfig{
+				URL:        "file:app.db?_foreign_keys=on",
+				Migrations: {{ if sqlMigrations .Recipe.Database.Migrations }}"file://scripts/migrations"{{ else }}""{{ end }},
+			},
+{{ end -}}
+{{ if hasDatabase "redis" }}			Redis: RedisConfig{
+				Address: "localhost:6379",
+			},
+{{ end -}}
+{{ if hasDatabase "mongodb" }}			MongoDB: MongoDBConfig{
+				URI: "mongodb://localhost:27017/app",
+			},
+{{ end -}}
+		},
+{{ end -}}
+{{ if schedulerEnabled }}		TaskScheduler: TaskSchedulerConfig{
+			Worker: "crego-task-executor",
+			Tasks: TaskConfigs{
+				ExampleCleanup: ExampleCleanupTaskConfig{
+					Name:                   "example-cleanup",
+					Cron:                   "0 2 * * *",
+					ShouldStartImmediately: false,
+					BatchSize:              500,
+					RetentionPeriod:        "72h",
+				},
+			},
+		},
 {{ end -}}
 	}
 }
+
 {{ if ne .Recipe.Configuration.Format "env" }}
 func resolveConfigPath(explicit string, fallback string) string {
 	if explicit != "" {
@@ -101,46 +213,79 @@ func applyEnvOverrides(cfg *Config) error {
 	if value := os.Getenv("APP_ENV"); value != "" {
 		cfg.AppEnv = value
 	}
-	if value := os.Getenv("HTTP_PORT"); value != "" {
+	if value := os.Getenv("SERVER_PORT"); value != "" {
 		port, err := strconv.Atoi(value)
 		if err != nil {
-			return fmt.Errorf("parse HTTP_PORT: %w", err)
+			return fmt.Errorf("parse SERVER_PORT: %w", err)
 		}
-		cfg.HTTPPort = port
+		cfg.Server.Port = port
 	}
-	if value := os.Getenv("LOG_FORMAT"); value != "" {
-		cfg.LogFormat = value
+	if value := os.Getenv("LOGGING_FORMAT"); value != "" {
+		cfg.Logging.Format = value
 	}
+{{ if schedulerEnabled }}
+	if value := os.Getenv("TASK_SCHEDULER_WORKER"); value != "" {
+		cfg.TaskScheduler.Worker = value
+	}
+	if value := os.Getenv("TASK_SCHEDULER_EXAMPLE_CLEANUP_NAME"); value != "" {
+		cfg.TaskScheduler.Tasks.ExampleCleanup.Name = value
+	}
+	if value := os.Getenv("TASK_SCHEDULER_EXAMPLE_CLEANUP_CRON"); value != "" {
+		cfg.TaskScheduler.Tasks.ExampleCleanup.Cron = value
+	}
+	if value := os.Getenv("TASK_SCHEDULER_EXAMPLE_CLEANUP_SHOULD_START_IMMEDIATELY"); value != "" {
+		shouldStartImmediately, err := strconv.ParseBool(value)
+		if err != nil {
+			return fmt.Errorf("parse TASK_SCHEDULER_EXAMPLE_CLEANUP_SHOULD_START_IMMEDIATELY: %w", err)
+		}
+		cfg.TaskScheduler.Tasks.ExampleCleanup.ShouldStartImmediately = shouldStartImmediately
+	}
+	if value := os.Getenv("TASK_SCHEDULER_EXAMPLE_CLEANUP_BATCH_SIZE"); value != "" {
+		batchSize, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("parse TASK_SCHEDULER_EXAMPLE_CLEANUP_BATCH_SIZE: %w", err)
+		}
+		cfg.TaskScheduler.Tasks.ExampleCleanup.BatchSize = batchSize
+	}
+	if value := os.Getenv("TASK_SCHEDULER_EXAMPLE_CLEANUP_RETENTION_PERIOD"); value != "" {
+		cfg.TaskScheduler.Tasks.ExampleCleanup.RetentionPeriod = value
+	}
+{{ end -}}
 {{ if hasDatabase "postgres" }}
-	if value := os.Getenv("POSTGRES_URL"); value != "" {
-		cfg.PostgresURL = value
+	if value := os.Getenv("DATABASE_POSTGRES_URL"); value != "" {
+		cfg.Database.Postgres.URL = value
 	}
 {{ end -}}
 {{ if hasDatabase "mysql" }}
-	if value := os.Getenv("MYSQL_URL"); value != "" {
-		cfg.MySQLURL = value
+	if value := os.Getenv("DATABASE_MYSQL_URL"); value != "" {
+		cfg.Database.MySQL.URL = value
 	}
 {{ end -}}
 {{ if hasDatabase "sqlite" }}
-	if value := os.Getenv("SQLITE_URL"); value != "" {
-		cfg.SQLiteURL = value
+	if value := os.Getenv("DATABASE_SQLITE_URL"); value != "" {
+		cfg.Database.SQLite.URL = value
 	}
 {{ end -}}
 {{ if anySQLDatabaseEnabled }}
 {{ if sqlMigrations .Recipe.Database.Migrations }}
 	if value := os.Getenv("DATABASE_MIGRATIONS"); value != "" {
-		cfg.DatabaseMigrations = value
+{{ if hasDatabase "postgres" }}		cfg.Database.Postgres.Migrations = value
+{{ end -}}
+{{ if hasDatabase "mysql" }}		cfg.Database.MySQL.Migrations = value
+{{ end -}}
+{{ if hasDatabase "sqlite" }}		cfg.Database.SQLite.Migrations = value
+{{ end -}}
 	}
 {{ end -}}
 {{ end -}}
 {{ if hasDatabase "redis" }}
-	if value := os.Getenv("REDIS_ADDRESS"); value != "" {
-		cfg.RedisAddress = value
+	if value := os.Getenv("DATABASE_REDIS_ADDRESS"); value != "" {
+		cfg.Database.Redis.Address = value
 	}
 {{ end -}}
 {{ if hasDatabase "mongodb" }}
-	if value := os.Getenv("MONGODB_URI"); value != "" {
-		cfg.MongoDBURI = value
+	if value := os.Getenv("DATABASE_MONGODB_URI"); value != "" {
+		cfg.Database.MongoDB.URI = value
 	}
 {{ end -}}
 	return nil
@@ -150,42 +295,68 @@ func validateConfig(cfg Config) error {
 	if cfg.AppEnv == "" {
 		return fmt.Errorf("app_env is required")
 	}
-	if cfg.HTTPPort < 1 || cfg.HTTPPort > 65535 {
-		return fmt.Errorf("http_port must be between 1 and 65535")
+	if cfg.Server.Port < 1 || cfg.Server.Port > 65535 {
+		return fmt.Errorf("server.port must be between 1 and 65535")
 	}
-	if cfg.LogFormat != "text" && cfg.LogFormat != "json" {
-		return fmt.Errorf("log_format must be text or json")
+	if cfg.Logging.Format != "text" && cfg.Logging.Format != "json" {
+		return fmt.Errorf("logging.format must be text or json")
 	}
+{{ if schedulerEnabled }}
+	if cfg.TaskScheduler.Worker == "" {
+		return fmt.Errorf("task_scheduler.worker is required")
+	}
+	if cfg.TaskScheduler.Tasks.ExampleCleanup.Name == "" {
+		return fmt.Errorf("task_scheduler.tasks.example_cleanup.name is required")
+	}
+	if cfg.TaskScheduler.Tasks.ExampleCleanup.Cron == "" {
+		return fmt.Errorf("task_scheduler.tasks.example_cleanup.cron is required")
+	}
+	if cfg.TaskScheduler.Tasks.ExampleCleanup.BatchSize < 1 {
+		return fmt.Errorf("task_scheduler.tasks.example_cleanup.batch_size must be greater than zero")
+	}
+	if _, err := time.ParseDuration(cfg.TaskScheduler.Tasks.ExampleCleanup.RetentionPeriod); err != nil {
+		return fmt.Errorf("parse task_scheduler.tasks.example_cleanup.retention_period: %w", err)
+	}
+{{ end -}}
 {{ if hasDatabase "postgres" }}
-	if cfg.PostgresURL == "" {
-		return fmt.Errorf("postgres_url is required")
+	if cfg.Database.Postgres.URL == "" {
+		return fmt.Errorf("database.postgres.url is required")
 	}
 {{ end -}}
 {{ if hasDatabase "mysql" }}
-	if cfg.MySQLURL == "" {
-		return fmt.Errorf("mysql_url is required")
+	if cfg.Database.MySQL.URL == "" {
+		return fmt.Errorf("database.mysql.url is required")
 	}
 {{ end -}}
 {{ if hasDatabase "sqlite" }}
-	if cfg.SQLiteURL == "" {
-		return fmt.Errorf("sqlite_url is required")
+	if cfg.Database.SQLite.URL == "" {
+		return fmt.Errorf("database.sqlite.url is required")
 	}
 {{ end -}}
 {{ if anySQLDatabaseEnabled }}
 {{ if sqlMigrations .Recipe.Database.Migrations }}
-	if cfg.DatabaseMigrations == "" {
-		return fmt.Errorf("database_migrations is required")
+{{ if hasDatabase "postgres" }}	if cfg.Database.Postgres.Migrations == "" {
+		return fmt.Errorf("database.postgres.migrations is required")
 	}
+{{ end -}}
+{{ if hasDatabase "mysql" }}	if cfg.Database.MySQL.Migrations == "" {
+		return fmt.Errorf("database.mysql.migrations is required")
+	}
+{{ end -}}
+{{ if hasDatabase "sqlite" }}	if cfg.Database.SQLite.Migrations == "" {
+		return fmt.Errorf("database.sqlite.migrations is required")
+	}
+{{ end -}}
 {{ end -}}
 {{ end -}}
 {{ if hasDatabase "redis" }}
-	if cfg.RedisAddress == "" {
-		return fmt.Errorf("redis_address is required")
+	if cfg.Database.Redis.Address == "" {
+		return fmt.Errorf("database.redis.address is required")
 	}
 {{ end -}}
 {{ if hasDatabase "mongodb" }}
-	if cfg.MongoDBURI == "" {
-		return fmt.Errorf("mongodb_uri is required")
+	if cfg.Database.MongoDB.URI == "" {
+		return fmt.Errorf("database.mongodb.uri is required")
 	}
 {{ end -}}
 	return nil

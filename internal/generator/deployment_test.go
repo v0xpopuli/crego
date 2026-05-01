@@ -54,7 +54,7 @@ func (s *DeploymentTemplateTestSuite) TestRendersDockerComposeAndCIFiles() {
 	s.Require().Contains(dockerfile, "EXPOSE 8080")
 
 	compose := readGeneratedFile(s, outDir, "deployments/docker-compose.yml")
-	s.Require().Contains(compose, "POSTGRES_URL: postgres://postgres:postgres@postgres:5432/app?sslmode=disable")
+	s.Require().Contains(compose, "DATABASE_POSTGRES_URL: postgres://postgres:postgres@postgres:5432/app?sslmode=disable")
 	s.Require().Contains(compose, "CONFIG_PATH: configs/config.yaml")
 	s.Require().Contains(compose, "postgres:")
 	s.Require().NotContains(compose, "mysql:")

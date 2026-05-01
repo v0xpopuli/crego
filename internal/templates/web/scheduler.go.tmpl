@@ -1,0 +1,168 @@
+package scheduler
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"{{ .ModulePath }}/internal/logging"
+	"github.com/go-co-op/gocron/v2"
+{{ if gormDistributedLock }}
+	gormlock "github.com/go-co-op/gocron-gorm-lock/v2"
+	"gorm.io/gorm"
+{{ end }}
+
+	"{{ .ModulePath }}/internal/config"
+)
+
+type (
+	TaskScheduler struct {
+		logger    logging.Logger
+		scheduler gocron.Scheduler
+		tasks     []Task
+{{ if gormDistributedLock }}
+		locker    *gormlock.GormLocker
+{{ end }}
+	}
+
+	Task interface {
+    		Name() string
+    		Cron() string
+    		ShouldStartImmediately() bool
+    		Runnable(context.Context)
+    }
+
+{{ if gormDistributedLock }}
+	Option func(*options)
+
+	options struct {
+		gormDB *gorm.DB
+	}
+{{ end }}
+)
+
+{{ if gormDistributedLock }}
+func WithGormDatabase(db *gorm.DB) Option {
+	return func(opts *options) {
+		opts.gormDB = db
+	}
+}
+
+func NewTaskScheduler(logger logging.Logger, cfg config.TaskSchedulerConfig, opts ...Option) (*TaskScheduler, error) {
+	resolved := options{}
+	for _, opt := range opts {
+		opt(&resolved)
+	}
+
+	schedulerOptions := make([]gocron.SchedulerOption, 0, 1)
+	var locker *gormlock.GormLocker
+	if resolved.gormDB != nil {
+		if cfg.Worker == "" {
+			return nil, fmt.Errorf("task scheduler worker is required")
+		}
+		if err := resolved.gormDB.AutoMigrate(&gormlock.CronJobLock{}); err != nil {
+			return nil, fmt.Errorf("migrate task scheduler locks: %w", err)
+		}
+		var err error
+		locker, err = gormlock.NewGormLocker(resolved.gormDB, cfg.Worker)
+		if err != nil {
+			return nil, fmt.Errorf("configure task scheduler lock provider: %w", err)
+		}
+		schedulerOptions = append(schedulerOptions, gocron.WithDistributedLocker(locker))
+	}
+
+	inner, err := gocron.NewScheduler(schedulerOptions...)
+{{ else }}
+func NewTaskScheduler(logger Logger, cfg config.TaskSchedulerConfig) (*TaskScheduler, error) {
+	_ = cfg
+	inner, err := gocron.NewScheduler()
+{{ end }}
+	if err != nil {
+		return nil, fmt.Errorf("configure task scheduler: %w", err)
+	}
+	return &TaskScheduler{
+		logger:    logger,
+		scheduler: inner,
+{{ if gormDistributedLock }}
+		locker:    locker,
+{{ end }}
+	}, nil
+}
+
+func (s *TaskScheduler) AddTasks(tasks ...Task) {
+	s.tasks = append(s.tasks, tasks...)
+}
+
+func (s *TaskScheduler) Run(ctx context.Context) {
+	if s == nil || s.scheduler == nil {
+		return
+	}
+	for _, task := range s.tasks {
+		jobOptions := []gocron.JobOption{
+			gocron.WithName(task.Name()),
+			gocron.WithSingletonMode(gocron.LimitModeReschedule),
+		}
+		if task.ShouldStartImmediately() {
+			jobOptions = append(jobOptions, gocron.WithStartAt(gocron.WithStartImmediately()))
+		}
+
+		_, err := s.scheduler.NewJob(
+			gocron.CronJob(task.Cron(), cronHasSeconds(task.Cron())),
+			gocron.NewTask(func(task Task) func(context.Context) {
+				return func(jobCtx context.Context) {
+					s.runTask(jobCtx, task)
+				}
+			}(task)),
+			jobOptions...,
+		)
+		if err != nil {
+			s.logError("task registration failed", "task", task.Name(), "error", err)
+			continue
+		}
+		s.logInfo("task registered", "task", task.Name(), "cron", task.Cron(), "start_immediately", task.ShouldStartImmediately())
+	}
+
+	s.scheduler.Start()
+	s.logInfo("task scheduler started", "tasks", len(s.tasks))
+	_ = ctx
+}
+
+func (s *TaskScheduler) Shutdown(ctx context.Context) {
+	if s == nil || s.scheduler == nil {
+		return
+	}
+	if err := s.scheduler.ShutdownWithContext(ctx); err != nil {
+		s.logError("task scheduler shutdown failed", "error", err)
+		return
+	}
+{{ if gormDistributedLock }}
+	if s.locker != nil {
+		s.locker.Close()
+	}
+{{ end }}
+	s.logInfo("task scheduler stopped")
+}
+
+func (s *TaskScheduler) runTask(ctx context.Context, task Task) {
+	startedAt := time.Now()
+	s.logInfo("task started", "task", task.Name())
+	task.Runnable(ctx)
+	s.logInfo("task completed", "task", task.Name(), "took", time.Since(startedAt).String())
+}
+
+func cronHasSeconds(expression string) bool {
+	return len(strings.Fields(expression)) == 6
+}
+
+func (s *TaskScheduler) logInfo(message string, args ...any) {
+	if s.logger != nil {
+		s.logger.Info(message, args...)
+	}
+}
+
+func (s *TaskScheduler) logError(message string, args ...any) {
+	if s.logger != nil {
+		s.logger.Error(message, args...)
+	}
+}

@@ -11,22 +11,19 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.mongodb.org/mongo-driver/v2/mongo/readpref"
-{{ if ne .Recipe.Layout.Style "minimal" -}}
+{{ if ne .Recipe.Layout.Style "minimal" }}
+	"{{ .ModulePath }}/internal/config"
 	"{{ .ModulePath }}/internal/logging"
 {{ end -}}
 )
 
-type MongoDBConfig struct {
-	URI string
-}
-
 type MongoDBClient struct {
-	config MongoDBConfig
+	config {{ if eq .Recipe.Layout.Style "minimal" }}MongoDBConfig{{ else }}config.MongoDBConfig{{ end }}
 	logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}
 	Client *mongo.Client
 }
 
-func NewMongoDBClient(ctx context.Context, cfg MongoDBConfig, logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) (*MongoDBClient, error) {
+func NewMongoDBClient(ctx context.Context, cfg {{ if eq .Recipe.Layout.Style "minimal" }}MongoDBConfig{{ else }}config.MongoDBConfig{{ end }}, logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) (*MongoDBClient, error) {
 	if cfg.URI == "" {
 		return nil, fmt.Errorf("mongodb_uri is required")
 	}

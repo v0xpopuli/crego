@@ -165,6 +165,7 @@ func (s *CliTestSuite) TestRecipePrintCommand() {
 		s.Require().Contains(out, "  orm_framework:")
 		s.Require().Contains(out, "  nosql: none")
 		s.Require().Contains(out, "  migrations: migrate")
+		s.Require().Contains(out, "task_scheduler: none")
 		s.Require().Contains(out, "framework: slog")
 		s.Require().Contains(out, "version: v1\n\nproject:")
 		s.Require().Contains(out, "\nproject:\n  name:")

@@ -8,6 +8,10 @@ package logging
 import (
 	"log/slog"
 	"os"
+{{ if ne .Recipe.Layout.Style "minimal" }}
+
+	"{{ .ModulePath }}/internal/config"
+{{ end }}
 )
 
 type Logger interface {
@@ -20,9 +24,9 @@ type defaultLogger struct {
 	inner *slog.Logger
 }
 
-func NewLogger(format string) (Logger, error) {
+func NewLogger(cfg {{ if eq .Recipe.Layout.Style "minimal" }}LoggingConfig{{ else }}config.LoggingConfig{{ end }}) (Logger, error) {
 	var handler slog.Handler
-	if format == "json" {
+	if cfg.Format == "json" {
 		handler = slog.NewJSONHandler(os.Stdout, nil)
 	} else {
 		handler = slog.NewTextHandler(os.Stdout, nil)
@@ -46,6 +50,10 @@ import (
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+{{ if ne .Recipe.Layout.Style "minimal" }}
+
+	"{{ .ModulePath }}/internal/config"
+{{ end }}
 )
 
 type Logger interface {
@@ -58,12 +66,12 @@ type defaultLogger struct {
 	inner *zap.SugaredLogger
 }
 
-func NewLogger(format string) (Logger, error) {
+func NewLogger(cfg {{ if eq .Recipe.Layout.Style "minimal" }}LoggingConfig{{ else }}config.LoggingConfig{{ end }}) (Logger, error) {
 	encoderConfig := zap.NewProductionEncoderConfig()
 	encoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 
 	var encoder zapcore.Encoder
-	if format == "json" {
+	if cfg.Format == "json" {
 		encoder = zapcore.NewJSONEncoder(encoderConfig)
 	} else {
 		encoder = zapcore.NewConsoleEncoder(encoderConfig)
@@ -91,6 +99,10 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+{{ if ne .Recipe.Layout.Style "minimal" }}
+
+	"{{ .ModulePath }}/internal/config"
+{{ end }}
 )
 
 type Logger interface {
@@ -103,9 +115,9 @@ type defaultLogger struct {
 	inner zerolog.Logger
 }
 
-func NewLogger(format string) (Logger, error) {
+func NewLogger(cfg {{ if eq .Recipe.Layout.Style "minimal" }}LoggingConfig{{ else }}config.LoggingConfig{{ end }}) (Logger, error) {
 	var logger zerolog.Logger
-	if format == "json" {
+	if cfg.Format == "json" {
 		logger = zerolog.New(os.Stdout).With().Timestamp().Logger()
 	} else {
 		writer := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339}
@@ -141,6 +153,10 @@ import (
 	"os"
 
 	"github.com/sirupsen/logrus"
+{{ if ne .Recipe.Layout.Style "minimal" }}
+
+	"{{ .ModulePath }}/internal/config"
+{{ end }}
 )
 
 type Logger interface {
@@ -153,11 +169,11 @@ type defaultLogger struct {
 	inner *logrus.Logger
 }
 
-func NewLogger(format string) (Logger, error) {
+func NewLogger(cfg {{ if eq .Recipe.Layout.Style "minimal" }}LoggingConfig{{ else }}config.LoggingConfig{{ end }}) (Logger, error) {
 	logger := logrus.New()
 	logger.SetOutput(os.Stdout)
 	logger.SetLevel(logrus.InfoLevel)
-	if format == "json" {
+	if cfg.Format == "json" {
 		logger.SetFormatter(&logrus.JSONFormatter{})
 	} else {
 		logger.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})

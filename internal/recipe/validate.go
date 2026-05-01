@@ -57,6 +57,7 @@ func Validate(r *Recipe) error {
 		problems = appendEnumProblem(problems, "server.framework", r.Server.Framework, serverFrameworkValues())
 	}
 	problems = appendEnumProblem(problems, "configuration.format", r.Configuration.Format, configurationFormatValues())
+	problems = appendEnumProblem(problems, "task_scheduler", r.TaskScheduler, taskSchedulerValues())
 	for _, driver := range drivers {
 		problems = appendEnumProblem(problems, "database.driver", driver, databaseDriverValues())
 	}
@@ -219,6 +220,10 @@ func databaseFrameworkValues() []string {
 
 func databaseMigrationValues() []string {
 	return []string{DatabaseMigrationsNone, DatabaseMigrationsGoose, DatabaseMigrationsMigrate}
+}
+
+func taskSchedulerValues() []string {
+	return []string{TaskSchedulerNone, TaskSchedulerGocron}
 }
 
 func loggingFrameworkValues() []string {

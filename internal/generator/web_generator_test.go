@@ -81,9 +81,9 @@ func (s *WebGeneratorTestSuite) TestGeneratesWebServiceMatrix() {
 				"internal/logging/logger.go",
 				"internal/server/server.go",
 				"internal/server/middleware/recover.go",
-				"internal/server/readiness.go",
+				"internal/server/handler/readiness.go",
 				"internal/server/handler/health.go",
-				"internal/server/ready.go",
+				"internal/server/handler/ready.go",
 			},
 			absentFiles: []string{
 				"configs/config.json",
@@ -118,7 +118,7 @@ func (s *WebGeneratorTestSuite) TestGeneratesWebServiceMatrix() {
 				"internal/logging/logger.go",
 				"internal/server/server.go",
 				"internal/server/middleware/recover.go",
-				"internal/server/readiness.go",
+				"internal/server/handler/readiness.go",
 			},
 			absentFiles: []string{
 				"configs/config.yaml",
@@ -153,7 +153,7 @@ func (s *WebGeneratorTestSuite) TestGeneratesWebServiceMatrix() {
 				"internal/logging/logger.go",
 				"internal/server/server.go",
 				"internal/server/middleware/recover.go",
-				"internal/server/readiness.go",
+				"internal/server/handler/readiness.go",
 			},
 			absentFiles: []string{
 				"configs/config.yaml",
@@ -270,6 +270,9 @@ func (s *WebGeneratorTestSuite) TestGeneratesDatabaseMatrix() {
 		absentModule     []string
 		expectedConfig   []string
 		absentConfig     []string
+		databaseFile     string
+		expectedDatabase []string
+		absentDatabase   []string
 		expectedReadme   []string
 		expectedMakefile []string
 		absentMakefile   []string
@@ -299,8 +302,18 @@ func (s *WebGeneratorTestSuite) TestGeneratesDatabaseMatrix() {
 				"github.com/golang-migrate/migrate/v4",
 			},
 			expectedConfig: []string{
-				"PostgresURL",
-				"DatabaseMigrations string",
+				"Postgres PostgresConfig",
+				"type (",
+				"PostgresConfig struct",
+				`Migrations: "file://scripts/migrations"`,
+			},
+			databaseFile: "internal/database/postgres.go",
+			expectedDatabase: []string{
+				`"github.com/acme/orders-api/internal/config"`,
+				"cfg config.PostgresConfig",
+			},
+			absentDatabase: []string{
+				"type PostgresConfig struct",
 			},
 			expectedReadme: []string{
 				"Database: `postgres`",
@@ -335,8 +348,17 @@ func (s *WebGeneratorTestSuite) TestGeneratesDatabaseMatrix() {
 			},
 			expectedConfig: []string{
 				"mysql://root:root@tcp(localhost:3306)/app?parseTime=true",
-				"MySQLURL",
-				"DatabaseMigrations string",
+				"MySQL MySQLConfig",
+				"MySQLConfig struct",
+				`Migrations: "file://scripts/migrations"`,
+			},
+			databaseFile: "internal/database/mysql.go",
+			expectedDatabase: []string{
+				`"github.com/acme/orders-api/internal/config"`,
+				"cfg config.MySQLConfig",
+			},
+			absentDatabase: []string{
+				"type MySQLConfig struct",
 			},
 			absentMakefile: []string{"migrate-status:", "MIGRATE_PACKAGE"},
 		},
@@ -360,8 +382,16 @@ func (s *WebGeneratorTestSuite) TestGeneratesDatabaseMatrix() {
 				"github.com/golang-migrate/migrate/v4",
 				"go.mongodb.org/mongo-driver/v2",
 			},
-			expectedConfig: []string{"RedisAddress"},
-			absentConfig:   []string{"DatabaseMigrations", "PostgresURL", "MySQLURL", "SQLiteURL"},
+			expectedConfig: []string{"Redis RedisConfig", "RedisConfig struct"},
+			absentConfig:   []string{"Postgres PostgresConfig", "MySQL MySQLConfig", "SQLite SQLiteConfig", "database.RedisConfig"},
+			databaseFile:   "internal/database/redis.go",
+			expectedDatabase: []string{
+				`"github.com/acme/orders-api/internal/config"`,
+				"cfg config.RedisConfig",
+			},
+			absentDatabase: []string{
+				"type RedisConfig struct",
+			},
 			expectedReadme: []string{"Database: `redis`", "No SQL framework or migration settings are generated."},
 			absentMakefile: []string{"migrate-up:", "MIGRATE_PACKAGE"},
 		},
@@ -385,8 +415,16 @@ func (s *WebGeneratorTestSuite) TestGeneratesDatabaseMatrix() {
 				"github.com/golang-migrate/migrate/v4",
 				"github.com/redis/go-redis/v9",
 			},
-			expectedConfig: []string{"MongoDBURI"},
-			absentConfig:   []string{"DatabaseMigrations", "PostgresURL", "MySQLURL", "SQLiteURL"},
+			expectedConfig: []string{"MongoDB MongoDBConfig", "MongoDBConfig struct"},
+			absentConfig:   []string{"Postgres PostgresConfig", "MySQL MySQLConfig", "SQLite SQLiteConfig", "database.MongoDBConfig"},
+			databaseFile:   "internal/database/mongodb.go",
+			expectedDatabase: []string{
+				`"github.com/acme/orders-api/internal/config"`,
+				"cfg config.MongoDBConfig",
+			},
+			absentDatabase: []string{
+				"type MongoDBConfig struct",
+			},
 			expectedReadme: []string{"Database: `mongodb`", "No SQL framework or migration settings are generated."},
 			absentMakefile: []string{"migrate-up:", "MIGRATE_PACKAGE"},
 		},
@@ -427,8 +465,24 @@ func (s *WebGeneratorTestSuite) TestGeneratesDatabaseMatrix() {
 			for _, absent := range tc.absentConfig {
 				s.Require().NotContains(configGo, absent)
 			}
+			s.Require().NotContains(configGo, "database.PostgresConfig")
+			s.Require().NotContains(configGo, "database.MySQLConfig")
+			s.Require().NotContains(configGo, "database.SQLiteConfig")
+			s.Require().NotContains(configGo, "database.RedisConfig")
+			s.Require().NotContains(configGo, "database.MongoDBConfig")
+			s.Require().NotContains(configGo, "LogFormat()")
 
-			readyGo := s.readGenerated(outDir, "internal/server/ready.go")
+			if tc.databaseFile != "" {
+				databaseGo := s.readGenerated(outDir, tc.databaseFile)
+				for _, expected := range tc.expectedDatabase {
+					s.Require().Contains(databaseGo, expected)
+				}
+				for _, absent := range tc.absentDatabase {
+					s.Require().NotContains(databaseGo, absent)
+				}
+			}
+
+			readyGo := s.readGenerated(outDir, "internal/server/handler/ready.go")
 			s.Require().Contains(readyGo, "StatusServiceUnavailable")
 			s.Require().Contains(readyGo, "Check")
 
@@ -489,6 +543,102 @@ func (s *WebGeneratorTestSuite) TestRendersRepresentativeDatabaseCompileFixtures
 	}
 }
 
+func (s *WebGeneratorTestSuite) TestGeneratesGocronScheduler() {
+	r := webRecipe(recipe.LayoutStyleLayered, recipe.ServerFrameworkChi, recipe.ConfigurationFormatYAML, recipe.LoggingFrameworkSlog)
+	r.TaskScheduler = recipe.TaskSchedulerGocron
+	plan, err := Resolve(component.NewRegistry(), r)
+	s.Require().NoError(err)
+
+	outDir := s.T().TempDir()
+	_, err = NewGenerator(templatefs.FS).Generate(context.Background(), r, plan, Options{OutDir: outDir})
+	s.Require().NoError(err)
+
+	s.Require().FileExists(filepath.Join(outDir, "internal/scheduler/scheduler.go"))
+	s.Require().FileExists(filepath.Join(outDir, "internal/scheduler/tasks/example_cleanup.go"))
+	goMod := s.readGenerated(outDir, "go.mod")
+	s.Require().Contains(goMod, "github.com/go-co-op/gocron/v2")
+	s.Require().NotContains(goMod, "github.com/go-co-op/gocron-gorm-lock/v2")
+
+	configGo := s.readGenerated(outDir, "internal/config/config.go")
+	s.Require().Contains(configGo, "TaskScheduler TaskSchedulerConfig")
+	s.Require().Contains(configGo, `Cron:                   "0 2 * * *"`)
+	s.Require().Contains(configGo, `RetentionPeriod:        "72h"`)
+	s.Require().NotContains(configGo, "LogFormat()")
+	s.Require().NotContains(configGo, "WorkerName()")
+	s.Require().NotContains(configGo, "TaskName()")
+
+	configYAML := s.readGenerated(outDir, "configs/config.yaml")
+	s.Require().Contains(configYAML, "task_scheduler:")
+	s.Require().Contains(configYAML, "example_cleanup:")
+	s.Require().Contains(configYAML, `cron: "0 2 * * *"`)
+
+	appGo := s.readGenerated(outDir, "internal/app/app.go")
+	s.Require().Contains(appGo, "taskScheduler *scheduler.TaskScheduler")
+	s.Require().Contains(appGo, "taskScheduler.AddTasks(tasks.NewExampleCleanupTask")
+	s.Require().Contains(appGo, "a.taskScheduler.Run(a.ctx)")
+	s.Require().Contains(appGo, "a.taskScheduler.Shutdown(ctx)")
+
+	schedulerGo := s.readGenerated(outDir, "internal/scheduler/scheduler.go")
+	s.Require().Contains(schedulerGo, "gocron.CronJob(task.Cron(), cronHasSeconds(task.Cron()))")
+	s.Require().Contains(schedulerGo, "gocron.WithSingletonMode(gocron.LimitModeReschedule)")
+	s.Require().Contains(schedulerGo, "gocron.WithStartAt(gocron.WithStartImmediately())")
+	s.Require().Contains(schedulerGo, `"github.com/acme/orders-api/internal/config"`)
+	s.Require().Contains(schedulerGo, "cfg config.TaskSchedulerConfig")
+	s.Require().NotContains(schedulerGo, "RuntimeConfig")
+
+	exampleCleanupGo := s.readGenerated(outDir, "internal/scheduler/tasks/example_cleanup.go")
+	s.Require().Contains(exampleCleanupGo, `"github.com/acme/orders-api/internal/config"`)
+	s.Require().Contains(exampleCleanupGo, "cfg config.ExampleCleanupTaskConfig")
+	s.Require().Contains(exampleCleanupGo, "t.config.Name")
+	s.Require().Contains(exampleCleanupGo, "t.config.Cron")
+	s.Require().Contains(exampleCleanupGo, "t.config.BatchSize")
+	s.Require().NotContains(exampleCleanupGo, "TaskName()")
+	s.Require().NotContains(exampleCleanupGo, "TaskCron()")
+	s.Require().NotContains(exampleCleanupGo, "TaskBatchSize()")
+
+	readme := s.readGenerated(outDir, "README.md")
+	s.Require().Contains(readme, "supported recipe values are `none` and `gocron`")
+	s.Require().Contains(readme, "5-field syntax and optional 6-field syntax")
+}
+
+func (s *WebGeneratorTestSuite) TestGeneratesGocronGormDistributedLock() {
+	r := webRecipe(recipe.LayoutStyleLayered, recipe.ServerFrameworkChi, recipe.ConfigurationFormatYAML, recipe.LoggingFrameworkSlog)
+	r.TaskScheduler = recipe.TaskSchedulerGocron
+	r.Database.Driver = recipe.DatabaseDriverPostgres
+	r.Database.Framework = recipe.DatabaseFrameworkGORM
+	plan, err := Resolve(component.NewRegistry(), r)
+	s.Require().NoError(err)
+
+	outDir := s.T().TempDir()
+	_, err = NewGenerator(templatefs.FS).Generate(context.Background(), r, plan, Options{OutDir: outDir})
+	s.Require().NoError(err)
+
+	goMod := s.readGenerated(outDir, "go.mod")
+	s.Require().Contains(goMod, "github.com/go-co-op/gocron/v2")
+	s.Require().Contains(goMod, "github.com/go-co-op/gocron-gorm-lock/v2")
+	appGo := s.readGenerated(outDir, "internal/app/app.go")
+	s.Require().Contains(appGo, "scheduler.WithGormDatabase(postgresClient.Database)")
+	schedulerGo := s.readGenerated(outDir, "internal/scheduler/scheduler.go")
+	s.Require().Contains(schedulerGo, "gocron.WithDistributedLocker(locker)")
+	s.Require().Contains(schedulerGo, "AutoMigrate(&gormlock.CronJobLock{})")
+}
+
+func (s *WebGeneratorTestSuite) TestOmitsSchedulerWhenDisabled() {
+	r := webRecipe(recipe.LayoutStyleLayered, recipe.ServerFrameworkChi, recipe.ConfigurationFormatYAML, recipe.LoggingFrameworkSlog)
+	plan, err := Resolve(component.NewRegistry(), r)
+	s.Require().NoError(err)
+
+	outDir := s.T().TempDir()
+	_, err = NewGenerator(templatefs.FS).Generate(context.Background(), r, plan, Options{OutDir: outDir})
+	s.Require().NoError(err)
+
+	s.requireNoGeneratedFile(outDir, "internal/scheduler/scheduler.go")
+	goMod := s.readGenerated(outDir, "go.mod")
+	s.Require().NotContains(goMod, "github.com/go-co-op/gocron/v2")
+	appGo := s.readGenerated(outDir, "internal/app/app.go")
+	s.Require().NotContains(appGo, "taskScheduler")
+}
+
 func (s *WebGeneratorTestSuite) TestGeneratesMultipleDatabaseProject() {
 	r := webRecipe(recipe.LayoutStyleLayered, recipe.ServerFrameworkChi, recipe.ConfigurationFormatYAML, recipe.LoggingFrameworkSlog)
 	r.Database.Drivers = []string{recipe.DatabaseDriverPostgres, recipe.DatabaseDriverRedis, recipe.DatabaseDriverMongoDB}
@@ -507,13 +657,30 @@ func (s *WebGeneratorTestSuite) TestGeneratesMultipleDatabaseProject() {
 	s.Require().FileExists(filepath.Join(outDir, "scripts/migrations/000001_init.up.sql"))
 	s.requireNoGeneratedFile(outDir, "cmd/orders-api-migrate/main.go")
 	configGo := s.readGenerated(outDir, "internal/config/config.go")
-	s.Require().Contains(configGo, "PostgresURL")
-	s.Require().Contains(configGo, "RedisAddress")
-	s.Require().Contains(configGo, "MongoDBURI")
+	s.Require().Contains(configGo, "Postgres PostgresConfig")
+	s.Require().Contains(configGo, "Redis")
+	s.Require().Contains(configGo, "RedisConfig struct")
+	s.Require().Contains(configGo, "MongoDB")
+	s.Require().Contains(configGo, "MongoDBConfig struct")
+	s.Require().NotContains(configGo, "database.PostgresConfig")
+	s.Require().NotContains(configGo, "database.RedisConfig")
+	s.Require().NotContains(configGo, "database.MongoDBConfig")
+	postgresGo := s.readGenerated(outDir, "internal/database/postgres.go")
+	s.Require().Contains(postgresGo, "cfg config.PostgresConfig")
+	s.Require().NotContains(postgresGo, "type PostgresConfig struct")
+	redisGo := s.readGenerated(outDir, "internal/database/redis.go")
+	s.Require().Contains(redisGo, "cfg config.RedisConfig")
+	s.Require().NotContains(redisGo, "type RedisConfig struct")
+	mongoDBGo := s.readGenerated(outDir, "internal/database/mongodb.go")
+	s.Require().Contains(mongoDBGo, "cfg config.MongoDBConfig")
+	s.Require().NotContains(mongoDBGo, "type MongoDBConfig struct")
+
 	appGo := s.readGenerated(outDir, "internal/app/app.go")
 	s.Require().Contains(appGo, "postgresClient *database.PostgresClient")
-	s.Require().Contains(appGo, "redisClient *database.RedisClient")
-	s.Require().Contains(appGo, "mongoDBClient *database.MongoDBClient")
+	s.Require().Contains(appGo, "redisClient")
+	s.Require().Contains(appGo, "*database.RedisClient")
+	s.Require().Contains(appGo, "mongoDBClient")
+	s.Require().Contains(appGo, "*database.MongoDBClient")
 	s.Require().Contains(appGo, "readinessChecks(")
 	s.Require().Contains(appGo, "a.postgresClient.RunMigrations(a.ctx)")
 	s.Require().Contains(appGo, "postgresClient:")
