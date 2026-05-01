@@ -31,6 +31,7 @@ func (s *DeploymentTemplateTestSuite) TestRendersDockerComposeAndCIFiles() {
 	r.Deployment.Compose = true
 	r.CI.GitHubActions = true
 	r.CI.GitLabCI = true
+	r.CI.AzurePipelines = true
 
 	plan, err := Resolve(component.NewRegistry(), r)
 	s.Require().NoError(err)
@@ -44,6 +45,7 @@ func (s *DeploymentTemplateTestSuite) TestRendersDockerComposeAndCIFiles() {
 	s.Require().Contains(result.FilesWritten, "deployments/docker-compose.yml")
 	s.Require().Contains(result.FilesWritten, ".github/workflows/test.yml")
 	s.Require().Contains(result.FilesWritten, ".gitlab-ci.yml")
+	s.Require().Contains(result.FilesWritten, "azure-pipelines.yml")
 
 	dockerfile := readGeneratedFile(s, outDir, "deployments/Dockerfile")
 	s.Require().Contains(dockerfile, "go mod tidy")
@@ -69,6 +71,11 @@ func (s *DeploymentTemplateTestSuite) TestRendersDockerComposeAndCIFiles() {
 	s.Require().Contains(gitlabCI, "go mod tidy")
 	s.Require().Contains(gitlabCI, "go vet ./...")
 	s.Require().Contains(gitlabCI, "go test ./...")
+
+	azurePipelines := readGeneratedFile(s, outDir, "azure-pipelines.yml")
+	s.Require().Contains(azurePipelines, "version: '1.25'")
+	s.Require().Contains(azurePipelines, "go mod tidy")
+	s.Require().Contains(azurePipelines, "go test -v ./...")
 }
 
 func (s *DeploymentTemplateTestSuite) TestComposeOmitsDatabaseServiceWhenDatabaseIsNone() {

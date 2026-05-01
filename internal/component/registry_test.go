@@ -55,6 +55,7 @@ func (s *RegistryTestSuite) TestListIncludesMVPComponents() {
 		IDDeploymentCompose,
 		IDCIGitHubActions,
 		IDCIGitLabCI,
+		IDCIAzurePipelines,
 	}, componentIDs(components))
 }
 

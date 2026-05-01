@@ -136,8 +136,9 @@ type (
 	}
 
 	CIConfig struct {
-		GitHubActions bool `yaml:"github_actions"`
-		GitLabCI      bool `yaml:"gitlab_ci"`
+		GitHubActions  bool `yaml:"github_actions"`
+		GitLabCI       bool `yaml:"gitlab_ci"`
+		AzurePipelines bool `yaml:"azure_pipelines"`
 	}
 )
 
