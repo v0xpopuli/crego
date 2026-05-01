@@ -108,10 +108,13 @@ type (
 	}
 
 	DatabaseConfig struct {
-		Driver     string   `yaml:"driver"`
-		Drivers    []string `yaml:"drivers,omitempty"`
-		Framework  string   `yaml:"framework,omitempty"`
-		Migrations string   `yaml:"migrations,omitempty"`
+		SQL          string       `yaml:"sql,omitempty"`
+		ORMFramework string       `yaml:"orm_framework,omitempty"`
+		NoSQL        NoSQLDrivers `yaml:"nosql,omitempty"`
+		Driver       string       `yaml:"driver"`
+		Drivers      []string     `yaml:"drivers,omitempty"`
+		Framework    string       `yaml:"framework,omitempty"`
+		Migrations   string       `yaml:"migrations,omitempty"`
 	}
 
 	LoggingConfig struct {
@@ -143,18 +146,6 @@ func (r Recipe) MarshalYAML() (any, error) {
 	Normalize(&resolved)
 	ApplyDefaults(&resolved)
 
-	drivers := DatabaseDrivers(resolved.Database)
-	noSQLDrivers := noSQLDatabaseDrivers(drivers)
-	sqlDatabase := primarySQLDatabaseDriver(drivers)
-	ormFramework := resolved.Database.Framework
-	if sqlDatabase == DatabaseDriverNone || ormFramework == DatabaseFrameworkNone {
-		ormFramework = ""
-	}
-	migrations := resolved.Database.Migrations
-	if sqlDatabase == DatabaseDriverNone {
-		migrations = ""
-	}
-
 	type recipeYAML struct {
 		Version       string              `yaml:"version"`
 		Project       ProjectConfig       `yaml:"project"`
@@ -162,21 +153,11 @@ func (r Recipe) MarshalYAML() (any, error) {
 		Layout        LayoutConfig        `yaml:"layout"`
 		Server        ServerConfig        `yaml:"server,omitempty"`
 		Configuration ConfigurationConfig `yaml:"configuration"`
-		SQLDatabase   string              `yaml:"sql_database"`
-		ORMFramework  string              `yaml:"orm_framework,omitempty"`
-		NoSQLDatabase any                 `yaml:"nosql_database"`
-		Migrations    string              `yaml:"migrations,omitempty"`
+		Database      DatabaseConfig      `yaml:"database"`
 		Logging       LoggingConfig       `yaml:"logging"`
 		Observability ObservabilityConfig `yaml:"observability"`
 		Deployment    DeploymentConfig    `yaml:"deployment"`
 		CI            CIConfig            `yaml:"ci"`
-	}
-
-	var noSQL any = DatabaseDriverNone
-	if len(noSQLDrivers) == 1 {
-		noSQL = noSQLDrivers[0]
-	} else if len(noSQLDrivers) > 1 {
-		noSQL = noSQLDrivers
 	}
 
 	return recipeYAML{
@@ -186,10 +167,7 @@ func (r Recipe) MarshalYAML() (any, error) {
 		Layout:        resolved.Layout,
 		Server:        resolved.Server,
 		Configuration: resolved.Configuration,
-		SQLDatabase:   sqlDatabase,
-		ORMFramework:  ormFramework,
-		NoSQLDatabase: noSQL,
-		Migrations:    migrations,
+		Database:      resolved.Database,
 		Logging:       resolved.Logging,
 		Observability: resolved.Observability,
 		Deployment:    resolved.Deployment,
@@ -199,33 +177,33 @@ func (r Recipe) MarshalYAML() (any, error) {
 
 func (c DatabaseConfig) MarshalYAML() (any, error) {
 	drivers := DatabaseDrivers(c)
-	if len(drivers) > 1 {
-		return struct {
-			Drivers    []string `yaml:"drivers"`
-			Framework  string   `yaml:"framework,omitempty"`
-			Migrations string   `yaml:"migrations,omitempty"`
-		}{
-			Drivers:    drivers,
-			Framework:  c.Framework,
-			Migrations: c.Migrations,
-		}, nil
+	noSQLDrivers := noSQLDatabaseDrivers(drivers)
+	sqlDatabase := primarySQLDatabaseDriver(drivers)
+	ormFramework := c.Framework
+	if sqlDatabase == DatabaseDriverNone || ormFramework == DatabaseFrameworkNone {
+		ormFramework = ""
 	}
-	if len(drivers) == 0 || drivers[0] == DatabaseDriverNone || drivers[0] == DatabaseDriverRedis || drivers[0] == DatabaseDriverMongoDB {
-		return struct {
-			Driver string `yaml:"driver"`
-		}{
-			Driver: firstDatabaseDriver(drivers),
-		}, nil
+	migrations := c.Migrations
+	if sqlDatabase == DatabaseDriverNone {
+		migrations = ""
+	}
+	var noSQL any = DatabaseDriverNone
+	if len(noSQLDrivers) == 1 {
+		noSQL = noSQLDrivers[0]
+	} else if len(noSQLDrivers) > 1 {
+		noSQL = noSQLDrivers
 	}
 
 	return struct {
-		Driver     string `yaml:"driver"`
-		Framework  string `yaml:"framework,omitempty"`
-		Migrations string `yaml:"migrations,omitempty"`
+		SQL          string `yaml:"sql"`
+		ORMFramework string `yaml:"orm_framework,omitempty"`
+		Migrations   string `yaml:"migrations,omitempty"`
+		NoSQL        any    `yaml:"nosql"`
 	}{
-		Driver:     drivers[0],
-		Framework:  c.Framework,
-		Migrations: c.Migrations,
+		SQL:          sqlDatabase,
+		ORMFramework: ormFramework,
+		Migrations:   migrations,
+		NoSQL:        noSQL,
 	}, nil
 }
 
