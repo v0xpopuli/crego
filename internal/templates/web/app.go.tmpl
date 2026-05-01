@@ -11,6 +11,15 @@ import (
 	"{{ .ModulePath }}/internal/database"
 {{ end -}}
 	"{{ .ModulePath }}/internal/logging"
+{{ end -}}
+{{ if schedulerEnabled -}}
+	"{{ .ModulePath }}/internal/scheduler"
+	"{{ .ModulePath }}/internal/scheduler/tasks"
+{{ end -}}
+{{ if ne .Recipe.Layout.Style "minimal" -}}
+{{ if anyDatabaseEnabled -}}
+	"{{ .ModulePath }}/internal/server/handler"
+{{ end -}}
 	"{{ .ModulePath }}/internal/server"
 {{ end -}}
 )
@@ -20,26 +29,30 @@ type Application struct {
 	startedAt time.Time
 
 {{ if eq .Recipe.Layout.Style "minimal" -}}
-	logger Logger
-	server *Server
+logger Logger
+server *Server
 {{ else -}}
-	logger logging.Logger
-	server *server.Server
+logger logging.Logger
+server *server.Server
 {{ end -}}
-{{ if hasDatabase "postgres" }}
+{{ if hasDatabase "postgres" -}}
 	postgresClient *{{ if eq .Recipe.Layout.Style "minimal" }}PostgresClient{{ else }}database.PostgresClient{{ end }}
 {{ end -}}
-{{ if hasDatabase "mysql" }}
+{{ if hasDatabase "mysql" -}}
 	mysqlClient *{{ if eq .Recipe.Layout.Style "minimal" }}MySQLClient{{ else }}database.MySQLClient{{ end }}
 {{ end -}}
-{{ if hasDatabase "sqlite" }}
+{{ if hasDatabase "sqlite" -}}
 	sqliteClient *{{ if eq .Recipe.Layout.Style "minimal" }}SQLiteClient{{ else }}database.SQLiteClient{{ end }}
 {{ end -}}
-{{ if hasDatabase "redis" }}
+{{ if hasDatabase "redis" -}}
 	redisClient *{{ if eq .Recipe.Layout.Style "minimal" }}RedisClient{{ else }}database.RedisClient{{ end }}
 {{ end -}}
-{{ if hasDatabase "mongodb" }}
+{{ if hasDatabase "mongodb" -}}
 	mongoDBClient *{{ if eq .Recipe.Layout.Style "minimal" }}MongoDBClient{{ else }}database.MongoDBClient{{ end }}
+{{ end -}}
+{{ if schedulerEnabled -}}
+
+	taskScheduler *scheduler.TaskScheduler
 {{ end -}}
 }
 
@@ -52,60 +65,56 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		ctx = context.Background()
 	}
 
-	logger, err := {{ if eq .Recipe.Layout.Style "minimal" }}NewLogger{{ else }}logging.NewLogger{{ end }}(cfg.LogFormat)
+	logger, err := {{ if eq .Recipe.Layout.Style "minimal" }}NewLogger{{ else }}logging.NewLogger{{ end }}(cfg.Logging)
 	if err != nil {
 		return nil, fmt.Errorf("configure logger: %w", err)
 	}
 
 {{ if hasDatabase "postgres" }}
-	postgresClient, err := {{ if eq .Recipe.Layout.Style "minimal" }}NewPostgresClient(ctx, PostgresConfig{{ else }}database.NewPostgresClient(ctx, database.PostgresConfig{{ end }}{
-		URL:        cfg.PostgresURL,
-		Migrations: {{ if sqlMigrations .Recipe.Database.Migrations }}cfg.DatabaseMigrations{{ else }}""{{ end }},
-	}, logger)
+	postgresClient, err := {{ if eq .Recipe.Layout.Style "minimal" }}NewPostgresClient{{ else }}database.NewPostgresClient{{ end }}(ctx, cfg.Database.Postgres, logger)
 	if err != nil {
 		return nil, fmt.Errorf("connect postgres database: %w", err)
 	}
 {{ end -}}
 {{ if hasDatabase "mysql" }}
-	mysqlClient, err := {{ if eq .Recipe.Layout.Style "minimal" }}NewMySQLClient(ctx, MySQLConfig{{ else }}database.NewMySQLClient(ctx, database.MySQLConfig{{ end }}{
-		URL:        cfg.MySQLURL,
-		Migrations: {{ if sqlMigrations .Recipe.Database.Migrations }}cfg.DatabaseMigrations{{ else }}""{{ end }},
-	}, logger)
+	mysqlClient, err := {{ if eq .Recipe.Layout.Style "minimal" }}NewMySQLClient{{ else }}database.NewMySQLClient{{ end }}(ctx, cfg.Database.MySQL, logger)
 	if err != nil {
 		return nil, fmt.Errorf("connect mysql database: %w", err)
 	}
 {{ end -}}
 {{ if hasDatabase "sqlite" }}
-	sqliteClient, err := {{ if eq .Recipe.Layout.Style "minimal" }}NewSQLiteClient(ctx, SQLiteConfig{{ else }}database.NewSQLiteClient(ctx, database.SQLiteConfig{{ end }}{
-		URL:        cfg.SQLiteURL,
-		Migrations: {{ if sqlMigrations .Recipe.Database.Migrations }}cfg.DatabaseMigrations{{ else }}""{{ end }},
-	}, logger)
+	sqliteClient, err := {{ if eq .Recipe.Layout.Style "minimal" }}NewSQLiteClient{{ else }}database.NewSQLiteClient{{ end }}(ctx, cfg.Database.SQLite, logger)
 	if err != nil {
 		return nil, fmt.Errorf("connect sqlite database: %w", err)
 	}
 {{ end -}}
 {{ if hasDatabase "redis" }}
-	redisClient, err := {{ if eq .Recipe.Layout.Style "minimal" }}NewRedisClient(ctx, RedisConfig{{ else }}database.NewRedisClient(ctx, database.RedisConfig{{ end }}{
-		Address: cfg.RedisAddress,
-	}, logger)
+	redisClient, err := {{ if eq .Recipe.Layout.Style "minimal" }}NewRedisClient{{ else }}database.NewRedisClient{{ end }}(ctx, cfg.Database.Redis, logger)
 	if err != nil {
 		return nil, fmt.Errorf("connect redis database: %w", err)
 	}
 {{ end -}}
 {{ if hasDatabase "mongodb" }}
-	mongoDBClient, err := {{ if eq .Recipe.Layout.Style "minimal" }}NewMongoDBClient(ctx, MongoDBConfig{{ else }}database.NewMongoDBClient(ctx, database.MongoDBConfig{{ end }}{
-		URI: cfg.MongoDBURI,
-	}, logger)
+	mongoDBClient, err := {{ if eq .Recipe.Layout.Style "minimal" }}NewMongoDBClient{{ else }}database.NewMongoDBClient{{ end }}(ctx, cfg.Database.MongoDB, logger)
 	if err != nil {
 		return nil, fmt.Errorf("connect mongodb database: %w", err)
 	}
 {{ end -}}
-	app := &Application{
+{{ if schedulerEnabled }}
+	taskScheduler, err := scheduler.NewTaskScheduler(logger, cfg.TaskScheduler{{ if gormDistributedLock }}{{ if hasDatabase "postgres" }}, scheduler.WithGormDatabase(postgresClient.Database){{ else if hasDatabase "mysql" }}, scheduler.WithGormDatabase(mysqlClient.Database){{ else if hasDatabase "sqlite" }}, scheduler.WithGormDatabase(sqliteClient.Database){{ end }}{{ end }})
+	if err != nil {
+		return nil, fmt.Errorf("configure task scheduler: %w", err)
+	}
+
+	taskScheduler.AddTasks(tasks.NewExampleCleanupTask(logger, cfg.TaskScheduler.Tasks.ExampleCleanup))
+
+{{ end -}}
+	return &Application{
 		ctx:       ctx,
 		startedAt: time.Now(),
 		logger:    logger,
 {{ if eq .Recipe.Layout.Style "minimal" -}}
-		server: NewServer(cfg, logger{{ if anyDatabaseEnabled }}, readinessChecks(
+		server: NewServer(cfg.Server, logger{{ if anyDatabaseEnabled }}, readinessChecks(
 {{ if hasDatabase "postgres" }}			postgresClient,
 {{ end -}}
 {{ if hasDatabase "mysql" }}			mysqlClient,
@@ -118,7 +127,7 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 {{ end -}}
 		){{ else }}, nil{{ end }}),
 {{ else -}}
-		server: server.NewServer(cfg, logger{{ if anyDatabaseEnabled }}, readinessChecks(
+		server: server.NewServer(cfg.Server, logger{{ if anyDatabaseEnabled }}, readinessChecks(
 {{ if hasDatabase "postgres" }}			postgresClient,
 {{ end -}}
 {{ if hasDatabase "mysql" }}			mysqlClient,
@@ -146,8 +155,10 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 {{ if hasDatabase "mongodb" -}}
 		mongoDBClient: mongoDBClient,
 {{ end -}}
-	}
-	return app, nil
+{{ if schedulerEnabled -}}
+		taskScheduler: taskScheduler,
+{{ end -}}
+	}, nil
 }
 
 func (a *Application) Run() error {
@@ -170,6 +181,11 @@ func (a *Application) Run() error {
 {{ end -}}
 {{ end }}
 
+{{ if schedulerEnabled }}
+	if a.taskScheduler != nil {
+		a.taskScheduler.Run(a.ctx)
+	}
+{{ end -}}
 	errCh := make(chan error, 1)
 	go func() {
 		a.logger.Info("starting server", "addr", a.server.Addr())
@@ -201,6 +217,11 @@ func (a *Application) Run() error {
 }
 
 func (a *Application) Shutdown(ctx context.Context) error {
+{{ if schedulerEnabled }}
+	if a.taskScheduler != nil {
+		a.taskScheduler.Shutdown(ctx)
+	}
+{{ end -}}
 	if err := a.server.Shutdown(ctx); err != nil {
 		a.logger.Error("shutdown failed", "error", err)
 		return fmt.Errorf("shutdown server: %w", err)
@@ -252,12 +273,12 @@ func (a *Application) Shutdown(ctx context.Context) error {
 {{ if eq .Recipe.Layout.Style "minimal" -}}
 func readinessChecks(checkers ...Checker) Checks {
 {{ else -}}
-func readinessChecks(checkers ...server.Checker) server.Checks {
+func readinessChecks(checkers ...handler.Checker) handler.Checks {
 {{ end -}}
 {{ if eq .Recipe.Layout.Style "minimal" -}}
 	checks := make(Checks, 0, len(checkers))
 {{ else -}}
-	checks := make(server.Checks, 0, len(checkers))
+	checks := make(handler.Checks, 0, len(checkers))
 {{ end -}}
 for _, checker := range checkers {
 		checks = append(checks, checker)

@@ -24,18 +24,14 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 {{ end }}
-{{ if ne .Recipe.Layout.Style "minimal" -}}
+{{ if ne .Recipe.Layout.Style "minimal" }}
+	"{{ .ModulePath }}/internal/config"
 	"{{ .ModulePath }}/internal/logging"
 {{ end -}}
 )
 
-type PostgresConfig struct {
-	URL        string
-	Migrations string
-}
-
 type PostgresClient struct {
-	config PostgresConfig
+	config {{ if eq .Recipe.Layout.Style "minimal" }}PostgresConfig{{ else }}config.PostgresConfig{{ end }}
 	address string
 	logger  {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}
 {{ if eq .Recipe.Database.Framework "pgx" }}
@@ -50,7 +46,7 @@ type PostgresClient struct {
 {{ end }}
 }
 
-func NewPostgresClient(ctx context.Context, cfg PostgresConfig, logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) (*PostgresClient, error) {
+func NewPostgresClient(ctx context.Context, cfg {{ if eq .Recipe.Layout.Style "minimal" }}PostgresConfig{{ else }}config.PostgresConfig{{ end }}, logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) (*PostgresClient, error) {
 	if cfg.URL == "" {
 		return nil, fmt.Errorf("database_url is required")
 	}

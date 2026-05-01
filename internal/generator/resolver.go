@@ -52,6 +52,11 @@ var (
 		recipe.DatabaseMigrationsMigrate: component.IDMigrationsMigrate,
 	}
 
+	taskSchedulerComponentIDs = map[string]string{
+		recipe.TaskSchedulerNone:   component.IDTaskSchedulerNone,
+		recipe.TaskSchedulerGocron: component.IDTaskSchedulerGocron,
+	}
+
 	loggingFrameworkComponentIDs = map[string]string{
 		recipe.LoggingFrameworkSlog:    component.IDLoggingSlog,
 		recipe.LoggingFrameworkZap:     component.IDLoggingZap,
@@ -129,6 +134,9 @@ func mappedComponentIDs(r *recipe.Recipe) []string {
 		add(mappedID(databaseMigrationsComponentIDs, component.CategoryMigrations, r.Database.Migrations))
 	} else if len(recipe.DatabaseDrivers(r.Database)) == 1 && recipe.DatabaseDrivers(r.Database)[0] == recipe.DatabaseDriverNone {
 		add(mappedID(databaseMigrationsComponentIDs, component.CategoryMigrations, recipe.DatabaseMigrationsNone))
+	}
+	if r.Project.Type == recipe.ProjectTypeWeb && r.TaskScheduler != "" {
+		add(mappedID(taskSchedulerComponentIDs, component.CategoryTaskScheduler, r.TaskScheduler))
 	}
 
 	if r.Logging.Framework != "" {
@@ -269,6 +277,14 @@ func buildPlan(registry *component.Registry, selected map[string]struct{}, r *re
 		seenGoModules[key] = struct{}{}
 		plan.GoModules = append(plan.GoModules, module)
 	}
+	for _, module := range schedulerGoModules(r) {
+		key := module.Path + "\x00" + module.Version
+		if _, ok := seenGoModules[key]; ok {
+			continue
+		}
+		seenGoModules[key] = struct{}{}
+		plan.GoModules = append(plan.GoModules, module)
+	}
 
 	return plan
 }
@@ -324,6 +340,19 @@ func databaseGoModules(r *recipe.Recipe) []component.GoModule {
 	}
 
 	return modules
+}
+
+func schedulerGoModules(r *recipe.Recipe) []component.GoModule {
+	if r == nil || r.TaskScheduler != recipe.TaskSchedulerGocron || r.Database.Framework != recipe.DatabaseFrameworkGORM {
+		return nil
+	}
+
+	for _, driver := range recipe.DatabaseDrivers(r.Database) {
+		if sqlDatabase(driver) {
+			return []component.GoModule{{Path: "github.com/go-co-op/gocron-gorm-lock/v2", Version: "v2.1.0"}}
+		}
+	}
+	return nil
 }
 
 func isSelected(selected map[string]struct{}, id string) bool {

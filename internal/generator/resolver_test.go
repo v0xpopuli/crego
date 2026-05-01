@@ -41,6 +41,7 @@ func (s *ResolverTestSuite) TestResolveWebChiPostgresGoose() {
 		component.IDDatabasePostgres,
 		component.IDDatabaseFrameworkPGX,
 		component.IDMigrationsGoose,
+		component.IDTaskSchedulerNone,
 		component.IDLoggingSlog,
 		component.IDObservabilityHealth,
 		component.IDObservabilityReadiness,
@@ -86,6 +87,7 @@ func (s *ResolverTestSuite) TestResolveWebGinMySQL() {
 		component.IDConfigurationEnv,
 		component.IDDatabaseMySQL,
 		component.IDDatabaseFrameworkSQL,
+		component.IDTaskSchedulerNone,
 		component.IDLoggingZerolog,
 	}, planComponentIDs(plan))
 }
@@ -105,6 +107,7 @@ func (s *ResolverTestSuite) TestResolveWebNetHTTPSQLite() {
 		component.IDConfigurationEnv,
 		component.IDDatabaseSQLite,
 		component.IDDatabaseFrameworkSQL,
+		component.IDTaskSchedulerNone,
 		component.IDLoggingSlog,
 	}, planComponentIDs(plan))
 }
@@ -179,6 +182,7 @@ func (s *ResolverTestSuite) TestRejectsServerFrameworkConflict() {
 		{ID: component.IDConfigurationEnv},
 		{ID: component.IDDatabaseNone},
 		{ID: component.IDMigrationsNone},
+		{ID: component.IDTaskSchedulerNone},
 		{ID: component.IDLoggingSlog},
 	})
 	r := baseRecipe(recipe.ProjectTypeWeb)
@@ -289,6 +293,7 @@ func (s *ResolverTestSuite) TestRejectsMissingDependency() {
 		{ID: component.IDConfigurationEnv},
 		{ID: component.IDDatabaseNone},
 		{ID: component.IDMigrationsNone},
+		{ID: component.IDTaskSchedulerNone},
 		{ID: component.IDLoggingSlog},
 	})
 	r := baseRecipe(recipe.ProjectTypeWeb)
@@ -328,6 +333,7 @@ func (s *ResolverTestSuite) TestEliminatesDuplicates() {
 		{ID: component.IDConfigurationEnv},
 		{ID: component.IDDatabaseNone},
 		{ID: component.IDMigrationsNone},
+		{ID: component.IDTaskSchedulerNone},
 		{ID: component.IDLoggingSlog},
 	})
 	r := baseRecipe(recipe.ProjectTypeWeb)
@@ -336,10 +342,56 @@ func (s *ResolverTestSuite) TestEliminatesDuplicates() {
 	plan, err := Resolve(registry, r)
 
 	s.Require().NoError(err)
-	s.Require().Equal([]string{component.IDProjectWeb, component.IDLayoutMinimal, component.IDServerChi, component.IDConfigurationEnv, component.IDDatabaseNone, component.IDMigrationsNone, component.IDLoggingSlog}, planComponentIDs(plan))
+	s.Require().Equal([]string{component.IDProjectWeb, component.IDLayoutMinimal, component.IDServerChi, component.IDConfigurationEnv, component.IDDatabaseNone, component.IDMigrationsNone, component.IDTaskSchedulerNone, component.IDLoggingSlog}, planComponentIDs(plan))
 	s.Require().Len(plan.Files, 2)
 	s.Require().Len(plan.GoModules, 2)
 	s.Require().Len(plan.Hooks, 2)
+}
+
+func (s *ResolverTestSuite) TestResolveGocronScheduler() {
+	r := baseRecipe(recipe.ProjectTypeWeb)
+	r.TaskScheduler = recipe.TaskSchedulerGocron
+
+	plan, err := Resolve(component.NewRegistry(), r)
+
+	s.Require().NoError(err)
+	s.Require().Contains(planComponentIDs(plan), component.IDTaskSchedulerGocron)
+	s.Require().Contains(planGoModulePaths(plan), "github.com/go-co-op/gocron/v2")
+	targets, err := RenderFileTargets(r, plan)
+	s.Require().NoError(err)
+	s.Require().Contains(templateTargets(targets), "internal/scheduler/scheduler.go")
+	s.Require().Contains(templateTargets(targets), "internal/scheduler/tasks/example_cleanup.go")
+}
+
+func (s *ResolverTestSuite) TestAddsGocronGormLockOnlyForGORMSQL() {
+	cases := []struct {
+		name      string
+		driver    string
+		framework string
+		expected  bool
+	}{
+		{name: "postgres gorm", driver: recipe.DatabaseDriverPostgres, framework: recipe.DatabaseFrameworkGORM, expected: true},
+		{name: "postgres pgx", driver: recipe.DatabaseDriverPostgres, framework: recipe.DatabaseFrameworkPGX},
+		{name: "redis", driver: recipe.DatabaseDriverRedis, framework: recipe.DatabaseFrameworkNone},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			r := baseRecipe(recipe.ProjectTypeWeb)
+			r.TaskScheduler = recipe.TaskSchedulerGocron
+			r.Database.Driver = tc.driver
+			r.Database.Framework = tc.framework
+
+			plan, err := Resolve(component.NewRegistry(), r)
+
+			s.Require().NoError(err)
+			if tc.expected {
+				s.Require().Contains(planGoModulePaths(plan), "github.com/go-co-op/gocron-gorm-lock/v2")
+			} else {
+				s.Require().NotContains(planGoModulePaths(plan), "github.com/go-co-op/gocron-gorm-lock/v2")
+			}
+		})
+	}
 }
 
 func (s *ResolverTestSuite) TestRejectsUnknownComponent() {

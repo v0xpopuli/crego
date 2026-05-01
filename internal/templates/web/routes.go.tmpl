@@ -9,7 +9,7 @@ import (
 	"net/http"
 
 {{ if ne .Recipe.Layout.Style "minimal" -}}
-{{ if .Recipe.Observability.Health -}}
+{{ if or .Recipe.Observability.Health .Recipe.Observability.Readiness -}}
 	"{{ .ModulePath }}/internal/server/handler"
 {{ end -}}
 	"{{ .ModulePath }}/internal/server/middleware"
@@ -26,7 +26,11 @@ func (s *Server) routes() http.Handler {
 {{ end -}}
 {{ end -}}
 {{ if .Recipe.Observability.Readiness }}
+{{ if eq .Recipe.Layout.Style "minimal" -}}
 	mux.HandleFunc("/ready", ReadyHandler(s.readiness))
+{{ else -}}
+	mux.HandleFunc("/ready", handler.ReadyHandler(s.readiness))
+{{ end -}}
 {{ end }}
 	var h http.Handler = mux
 {{ if eq .Recipe.Layout.Style "minimal" -}}
@@ -47,7 +51,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 {{ if ne .Recipe.Layout.Style "minimal" }}
-{{ if .Recipe.Observability.Health -}}
+{{ if or .Recipe.Observability.Health .Recipe.Observability.Readiness -}}
 	"{{ .ModulePath }}/internal/server/handler"
 {{ end -}}
 	"{{ .ModulePath }}/internal/server/middleware"
@@ -73,7 +77,11 @@ func (s *Server) routes() http.Handler {
 {{ end -}}
 {{ end -}}
 {{ if .Recipe.Observability.Readiness }}
+{{ if eq .Recipe.Layout.Style "minimal" -}}
 	router.Get("/ready", ReadyHandler(s.readiness))
+{{ else -}}
+	router.Get("/ready", handler.ReadyHandler(s.readiness))
+{{ end -}}
 {{ end }}
 	return router
 }
@@ -84,7 +92,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 {{ if ne .Recipe.Layout.Style "minimal" }}
-{{ if .Recipe.Observability.Health -}}
+{{ if or .Recipe.Observability.Health .Recipe.Observability.Readiness -}}
 	"{{ .ModulePath }}/internal/server/handler"
 {{ end -}}
 	"{{ .ModulePath }}/internal/server/middleware"
@@ -107,7 +115,11 @@ func (s *Server) routes() http.Handler {
 {{ end -}}
 {{ end -}}
 {{ if .Recipe.Observability.Readiness }}
+{{ if eq .Recipe.Layout.Style "minimal" -}}
 	router.GET("/ready", ReadyHandler(s.readiness))
+{{ else -}}
+	router.GET("/ready", handler.ReadyHandler(s.readiness))
+{{ end -}}
 {{ end }}
 	return router
 }
@@ -115,7 +127,7 @@ func (s *Server) routes() http.Handler {
 {{ if eq .Recipe.Server.Framework "echo" -}}
 {{ if ne .Recipe.Layout.Style "minimal" -}}
 import (
-{{ if .Recipe.Observability.Health -}}
+{{ if or .Recipe.Observability.Health .Recipe.Observability.Readiness -}}
 	"{{ .ModulePath }}/internal/server/handler"
 {{ end -}}
 	"{{ .ModulePath }}/internal/server/middleware"
@@ -139,14 +151,18 @@ func (s *Server) registerRoutes() {
 {{ end -}}
 {{ end -}}
 {{ if .Recipe.Observability.Readiness }}
+{{ if eq .Recipe.Layout.Style "minimal" -}}
 	s.echo.GET("/ready", ReadyHandler(s.readiness))
+{{ else -}}
+	s.echo.GET("/ready", handler.ReadyHandler(s.readiness))
+{{ end -}}
 {{ end }}
 }
 {{ end -}}
 {{ if eq .Recipe.Server.Framework "fiber" -}}
 {{ if ne .Recipe.Layout.Style "minimal" -}}
 import (
-{{ if .Recipe.Observability.Health -}}
+{{ if or .Recipe.Observability.Health .Recipe.Observability.Readiness -}}
 	"{{ .ModulePath }}/internal/server/handler"
 {{ end -}}
 	"{{ .ModulePath }}/internal/server/middleware"
@@ -170,7 +186,11 @@ func (s *Server) registerRoutes() {
 {{ end -}}
 {{ end -}}
 {{ if .Recipe.Observability.Readiness }}
+{{ if eq .Recipe.Layout.Style "minimal" -}}
 	s.app.Get("/ready", ReadyHandler(s.readiness))
+{{ else -}}
+	s.app.Get("/ready", handler.ReadyHandler(s.readiness))
+{{ end -}}
 {{ end }}
 }
 {{ end -}}

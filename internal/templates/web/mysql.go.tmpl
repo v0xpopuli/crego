@@ -18,18 +18,14 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 {{ end }}
-{{ if ne .Recipe.Layout.Style "minimal" -}}
+{{ if ne .Recipe.Layout.Style "minimal" }}
+	"{{ .ModulePath }}/internal/config"
 	"{{ .ModulePath }}/internal/logging"
 {{ end -}}
 )
 
-type MySQLConfig struct {
-	URL        string
-	Migrations string
-}
-
 type MySQLClient struct {
-	config MySQLConfig
+	config {{ if eq .Recipe.Layout.Style "minimal" }}MySQLConfig{{ else }}config.MySQLConfig{{ end }}
 	address string
 	logger  {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}
 {{ if eq .Recipe.Database.Framework "sql" }}
@@ -41,7 +37,7 @@ type MySQLClient struct {
 {{ end }}
 }
 
-func NewMySQLClient(ctx context.Context, cfg MySQLConfig, logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) (*MySQLClient, error) {
+func NewMySQLClient(ctx context.Context, cfg {{ if eq .Recipe.Layout.Style "minimal" }}MySQLConfig{{ else }}config.MySQLConfig{{ end }}, logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) (*MySQLClient, error) {
 	if cfg.URL == "" {
 		return nil, fmt.Errorf("database_url is required")
 	}

@@ -14,24 +14,25 @@ import (
 
 {{ if ne .Recipe.Layout.Style "minimal" -}}
 	"{{ .ModulePath }}/internal/config"
+	"{{ .ModulePath }}/internal/server/handler"
 	"{{ .ModulePath }}/internal/logging"
 {{ end -}}
 )
 
 type Server struct {
 	httpServer *http.Server
-	readiness  Checker
+	readiness  {{ if eq .Recipe.Layout.Style "minimal" }}Checker{{ else }}handler.Checker{{ end }}
 	logger     {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}
 }
 
 {{ if eq .Recipe.Layout.Style "minimal" -}}
-func NewServer(cfg Config, logger Logger, readiness Checker) *Server {
+func NewServer(cfg ServerConfig, logger Logger, readiness Checker) *Server {
 {{ else -}}
-func NewServer(cfg config.Config, logger logging.Logger, readiness Checker) *Server {
+func NewServer(cfg config.ServerConfig, logger logging.Logger, readiness handler.Checker) *Server {
 {{ end -}}
 	srv := &Server{logger: logger, readiness: readiness}
 	srv.httpServer = &http.Server{
-		Addr:              ":" + strconv.Itoa(cfg.HTTPPort),
+		Addr:              ":" + strconv.Itoa(cfg.Port),
 		Handler:           srv.routes(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
@@ -64,6 +65,7 @@ import (
 	"github.com/labstack/echo/v4"
 {{ if ne .Recipe.Layout.Style "minimal" }}
 	"{{ .ModulePath }}/internal/config"
+	"{{ .ModulePath }}/internal/server/handler"
 	"{{ .ModulePath }}/internal/logging"
 {{ end -}}
 )
@@ -71,21 +73,21 @@ import (
 type Server struct {
 	echo      *echo.Echo
 	addr      string
-	readiness Checker
+	readiness {{ if eq .Recipe.Layout.Style "minimal" }}Checker{{ else }}handler.Checker{{ end }}
 	logger    {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}
 }
 
 {{ if eq .Recipe.Layout.Style "minimal" -}}
-func NewServer(cfg Config, logger Logger, readiness Checker) *Server {
+func NewServer(cfg ServerConfig, logger Logger, readiness Checker) *Server {
 {{ else -}}
-func NewServer(cfg config.Config, logger logging.Logger, readiness Checker) *Server {
+func NewServer(cfg config.ServerConfig, logger logging.Logger, readiness handler.Checker) *Server {
 {{ end -}}
 	e := echo.New()
 	e.HideBanner = true
 	e.HidePort = true
 	srv := &Server{
 		echo:      e,
-		addr:      ":" + strconv.Itoa(cfg.HTTPPort),
+		addr:      ":" + strconv.Itoa(cfg.Port),
 		readiness: readiness,
 		logger:    logger,
 	}
@@ -117,6 +119,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 {{ if ne .Recipe.Layout.Style "minimal" }}
 	"{{ .ModulePath }}/internal/config"
+	"{{ .ModulePath }}/internal/server/handler"
 	"{{ .ModulePath }}/internal/logging"
 {{ end -}}
 )
@@ -124,20 +127,20 @@ import (
 type Server struct {
 	app       *fiber.App
 	addr      string
-	readiness Checker
+	readiness {{ if eq .Recipe.Layout.Style "minimal" }}Checker{{ else }}handler.Checker{{ end }}
 	logger    {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}
 }
 
 {{ if eq .Recipe.Layout.Style "minimal" -}}
-func NewServer(cfg Config, logger Logger, readiness Checker) *Server {
+func NewServer(cfg ServerConfig, logger Logger, readiness Checker) *Server {
 {{ else -}}
-func NewServer(cfg config.Config, logger logging.Logger, readiness Checker) *Server {
+func NewServer(cfg config.ServerConfig, logger logging.Logger, readiness handler.Checker) *Server {
 {{ end -}}
 	srv := &Server{
 		app: fiber.New(fiber.Config{
 			DisableStartupMessage: true,
 		}),
-		addr:      ":" + strconv.Itoa(cfg.HTTPPort),
+		addr:      ":" + strconv.Itoa(cfg.Port),
 		readiness: readiness,
 		logger:    logger,
 	}

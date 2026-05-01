@@ -190,8 +190,14 @@ func templateFuncs(componentIDs []string, r *recipe.Recipe) template.FuncMap {
 		"configTag":       configTag(r),
 		"sqlDatabase":     sqlDatabase,
 		"sqlMigrations":   sqlMigrations,
-		"lower":           strings.ToLower,
-		"title":           title,
+		"schedulerEnabled": func() bool {
+			return r != nil && r.TaskScheduler == recipe.TaskSchedulerGocron
+		},
+		"gormDistributedLock": func() bool {
+			return r != nil && r.TaskScheduler == recipe.TaskSchedulerGocron && r.Database.Framework == recipe.DatabaseFrameworkGORM && hasSQLDatabase(drivers)
+		},
+		"lower": strings.ToLower,
+		"title": title,
 	}
 }
 
@@ -224,6 +230,15 @@ func sqlDatabase(driver string) bool {
 	default:
 		return false
 	}
+}
+
+func hasSQLDatabase(drivers map[string]struct{}) bool {
+	for driver := range drivers {
+		if sqlDatabase(driver) {
+			return true
+		}
+	}
+	return false
 }
 
 func sqlMigrations(migrations string) bool {

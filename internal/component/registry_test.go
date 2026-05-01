@@ -45,6 +45,8 @@ func (s *RegistryTestSuite) TestListIncludesMVPComponents() {
 		IDMigrationsNone,
 		IDMigrationsGoose,
 		IDMigrationsMigrate,
+		IDTaskSchedulerNone,
+		IDTaskSchedulerGocron,
 		IDLoggingSlog,
 		IDLoggingZap,
 		IDLoggingZerolog,

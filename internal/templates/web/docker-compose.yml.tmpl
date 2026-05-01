@@ -5,28 +5,28 @@ services:
     image: {{ .ProjectName }}:local
     environment:
       APP_ENV: development
-      HTTP_PORT: "{{ .Recipe.Server.Port }}"
-      LOG_FORMAT: {{ .Recipe.Logging.Format }}
+      SERVER_PORT: "{{ .Recipe.Server.Port }}"
+      LOGGING_FORMAT: {{ .Recipe.Logging.Format }}
 {{ if ne .Recipe.Configuration.Format "env" }}
       CONFIG_PATH: configs/config.{{ .Recipe.Configuration.Format }}
 {{ end -}}
 {{ if hasDatabase "postgres" }}
-      POSTGRES_URL: postgres://postgres:postgres@postgres:5432/app?sslmode=disable
+      DATABASE_POSTGRES_URL: postgres://postgres:postgres@postgres:5432/app?sslmode=disable
 {{ end -}}
 {{ if hasDatabase "mysql" }}
-      MYSQL_URL: mysql://root:root@tcp(mysql:3306)/app?parseTime=true
+      DATABASE_MYSQL_URL: mysql://root:root@tcp(mysql:3306)/app?parseTime=true
 {{ end -}}
 {{ if hasDatabase "sqlite" }}
-      SQLITE_URL: file:/app/data/app.db?_foreign_keys=on
+      DATABASE_SQLITE_URL: file:/app/data/app.db?_foreign_keys=on
 {{ end -}}
 {{ if and (anySQLDatabaseEnabled) (sqlMigrations .Recipe.Database.Migrations) }}
       DATABASE_MIGRATIONS: file://scripts/migrations
 {{ end -}}
 {{ if hasDatabase "redis" }}
-      REDIS_ADDRESS: redis:6379
+      DATABASE_REDIS_ADDRESS: redis:6379
 {{ end -}}
 {{ if hasDatabase "mongodb" }}
-      MONGODB_URI: mongodb://mongodb:27017/app
+      DATABASE_MONGODB_URI: mongodb://mongodb:27017/app
 {{ end }}
     ports:
       - "{{ .Recipe.Server.Port }}:{{ .Recipe.Server.Port }}"

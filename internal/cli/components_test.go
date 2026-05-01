@@ -24,6 +24,8 @@ func (s *CliTestSuite) TestComponentsListCommand() {
 		s.Require().Contains(out, "  none - Project without a sql database integration.")
 		s.Require().Contains(out, "orm_framework:")
 		s.Require().Contains(out, "  gorm - Database access through GORM.")
+		s.Require().Contains(out, "task_scheduler:")
+		s.Require().Contains(out, "  gocron - Scheduled task executor backed by gocron.")
 		s.Require().Contains(out, "nosql_database:")
 		s.Require().Contains(out, "  none - Project without a nosql database integration.")
 		s.Require().Contains(out, "  slog - Structured logging through the Go standard library slog package.")
