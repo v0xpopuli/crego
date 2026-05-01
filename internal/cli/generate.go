@@ -8,6 +8,7 @@ import (
 	"github.com/v0xpopuli/crego/internal/component"
 	"github.com/v0xpopuli/crego/internal/generator"
 	"github.com/v0xpopuli/crego/internal/recipe"
+	templatefs "github.com/v0xpopuli/crego/internal/templates"
 )
 
 type generateOptions struct {
@@ -62,7 +63,7 @@ func runGenerate(out io.Writer, global *globalOptions, opts *generateOptions) er
 		return err
 	}
 
-	result, err := generator.NewGenerator(nil).Generate(nil, r, plan, generator.Options{
+	result, err := generator.NewGenerator(templatefs.FS).Generate(nil, r, plan, generator.Options{
 		OutDir: opts.outDir,
 		DryRun: opts.dryRun,
 		Force:  opts.force,

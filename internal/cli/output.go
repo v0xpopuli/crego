@@ -10,18 +10,15 @@ import (
 	"github.com/v0xpopuli/crego/internal/generator"
 )
 
-const (
-	componentSupportReady               = "ready"
-	componentSupportPlannedNotGenerated = "planned-not-yet-generated"
-)
-
 var componentCategoryOrder = []string{
 	component.CategoryProject,
 	component.CategoryLayout,
 	component.CategoryConfiguration,
 	component.CategoryServer,
 	component.CategoryConfiguration,
-	component.CategoryDatabase,
+	component.CategorySQLDatabase,
+	component.CategoryORMFramework,
+	component.CategoryNoSQLDatabase,
 	component.CategoryMigrations,
 	component.CategoryLogging,
 	component.CategoryObservability,
@@ -31,25 +28,22 @@ var componentCategoryOrder = []string{
 
 type (
 	componentSummaryOutput struct {
-		ID            string `json:"id"`
-		Category      string `json:"category"`
-		Name          string `json:"name"`
-		Description   string `json:"description"`
-		SupportStatus string `json:"support_status"`
+		ID          string `json:"id"`
+		Category    string `json:"category"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
 	}
 
 	componentDetailOutput struct {
-		ID            string               `json:"id"`
-		Category      string               `json:"category"`
-		Name          string               `json:"name"`
-		Description   string               `json:"description"`
-		Requires      []string             `json:"requires"`
-		Conflicts     []string             `json:"conflicts"`
-		Files         []templateFileOutput `json:"files"`
-		GoModules     []goModuleOutput     `json:"go_modules"`
-		Hooks         []hookOutput         `json:"hooks"`
-		SupportStatus string               `json:"support_status"`
-		SupportNote   string               `json:"support_note,omitempty"`
+		ID          string               `json:"id"`
+		Category    string               `json:"category"`
+		Name        string               `json:"name"`
+		Description string               `json:"description"`
+		Requires    []string             `json:"requires"`
+		Conflicts   []string             `json:"conflicts"`
+		Files       []templateFileOutput `json:"files"`
+		GoModules   []goModuleOutput     `json:"go_modules"`
+		Hooks       []hookOutput         `json:"hooks"`
 	}
 
 	componentCategoryOutput struct {
@@ -92,7 +86,7 @@ func encodeJSON(out io.Writer, value any) error {
 
 func publicComponentCategory(category string) string {
 	if category == component.CategoryDatabaseFramework {
-		return component.CategoryDatabase
+		return component.CategoryORMFramework
 	}
 	return category
 }
@@ -111,39 +105,38 @@ func formatPublicComponentCategories() string {
 }
 
 func componentSummary(c component.Component) componentSummaryOutput {
-	status, _ := componentSupport(c)
-	return componentSummaryOutput{
-		ID:            c.ID,
-		Category:      publicComponentCategory(c.Category),
-		Name:          c.Name,
-		Description:   c.Description,
-		SupportStatus: status,
+	category := publicComponentCategory(c.Category)
+	switch c.ID {
+	case component.IDDatabaseNone, component.IDDatabasePostgres, component.IDDatabaseMySQL, component.IDDatabaseSQLite:
+		category = component.CategorySQLDatabase
+	case component.IDDatabaseRedis, component.IDDatabaseMongoDB:
+		category = component.CategoryNoSQLDatabase
 	}
+	summary := componentSummaryOutput{
+		ID:          c.ID,
+		Category:    category,
+		Name:        c.Name,
+		Description: c.Description,
+	}
+	if c.ID == component.IDDatabaseNone {
+		summary.Description = "Project without a sql database integration."
+	}
+	return summary
 }
 
 func componentDetail(c component.Component) componentDetailOutput {
-	status, note := componentSupport(c)
+	summary := componentSummary(c)
 	return componentDetailOutput{
-		ID:            c.ID,
-		Category:      publicComponentCategory(c.Category),
-		Name:          c.Name,
-		Description:   c.Description,
-		Requires:      stringSlice(c.Requires),
-		Conflicts:     stringSlice(c.Conflicts),
-		Files:         templateFilesOutput(c.Files),
-		GoModules:     goModulesOutput(c.GoModules),
-		Hooks:         hooksOutput(c.Hooks),
-		SupportStatus: status,
-		SupportNote:   note,
+		ID:          c.ID,
+		Category:    summary.Category,
+		Name:        c.Name,
+		Description: c.Description,
+		Requires:    stringSlice(c.Requires),
+		Conflicts:   stringSlice(c.Conflicts),
+		Files:       templateFilesOutput(c.Files),
+		GoModules:   goModulesOutput(c.GoModules),
+		Hooks:       hooksOutput(c.Hooks),
 	}
-}
-
-func componentSupport(c component.Component) (string, string) {
-	if len(c.Files) == 0 && len(c.GoModules) == 0 && len(c.Hooks) == 0 {
-		return componentSupportPlannedNotGenerated, "Selectable and resolvable, but no generation artifacts are implemented yet."
-	}
-
-	return componentSupportReady, ""
 }
 
 func templateFilesOutput(files []component.TemplateFile) []templateFileOutput {

@@ -51,7 +51,7 @@ func (r *Registry) Get(id string) (Component, bool) {
 func defaultComponents() []Component {
 	serverConflicts := []string{IDServerNetHTTP, IDServerChi, IDServerGin, IDServerEcho, IDServerFiber}
 	configurationConflicts := []string{IDConfigurationEnv, IDConfigurationYAML, IDConfigurationJSON, IDConfigurationTOML}
-	databaseConflicts := []string{IDDatabaseNone, IDDatabasePostgres, IDDatabaseMySQL, IDDatabaseSQLite}
+	databaseComponents := []string{IDDatabaseNone, IDDatabasePostgres, IDDatabaseMySQL, IDDatabaseSQLite, IDDatabaseRedis, IDDatabaseMongoDB}
 	loggingConflicts := []string{IDLoggingSlog, IDLoggingZap, IDLoggingZerolog, IDLoggingLogrus}
 
 	return []Component{
@@ -70,8 +70,10 @@ func defaultComponents() []Component {
 				{Source: "web/logger.go.tmpl", Target: "{{ if eq .Recipe.Layout.Style \"minimal\" }}internal/app/logger.go{{ else }}internal/logging/logger.go{{ end }}"},
 				{Source: "web/server.go.tmpl", Target: "{{ if eq .Recipe.Layout.Style \"minimal\" }}internal/app/server.go{{ else }}internal/server/server.go{{ end }}"},
 				{Source: "web/routes.go.tmpl", Target: "{{ if eq .Recipe.Layout.Style \"minimal\" }}internal/app/routes.go{{ else }}internal/server/routes.go{{ end }}"},
+				{Source: "web/readiness.go.tmpl", Target: "{{ if eq .Recipe.Layout.Style \"minimal\" }}internal/app/readiness.go{{ else }}internal/server/readiness.go{{ end }}"},
 				{Source: "web/request_id.go.tmpl", Target: "{{ if eq .Recipe.Layout.Style \"minimal\" }}internal/app/request_id.go{{ else }}internal/server/middleware/request_id.go{{ end }}"},
 				{Source: "web/logging_middleware.go.tmpl", Target: "{{ if eq .Recipe.Layout.Style \"minimal\" }}internal/app/logging.go{{ else }}internal/server/middleware/logging.go{{ end }}"},
+				{Source: "web/recover.go.tmpl", Target: "{{ if eq .Recipe.Layout.Style \"minimal\" }}internal/app/recover.go{{ else }}internal/server/middleware/recover.go{{ end }}"},
 			},
 		},
 		{
@@ -102,10 +104,22 @@ func defaultComponents() []Component {
 		configurationComponent(IDConfigurationYAML, "YAML configuration", "Configuration loaded from YAML files.", without(configurationConflicts, IDConfigurationYAML), []TemplateFile{{Source: "web/config.yaml.tmpl", Target: "configs/config.yaml"}}, []GoModule{{Path: "gopkg.in/yaml.v3", Version: "v3.0.1"}}),
 		configurationComponent(IDConfigurationJSON, "JSON configuration", "Configuration loaded from JSON files.", without(configurationConflicts, IDConfigurationJSON), []TemplateFile{{Source: "web/config.json.tmpl", Target: "configs/config.json"}}, nil),
 		configurationComponent(IDConfigurationTOML, "TOML configuration", "Configuration loaded from TOML files.", without(configurationConflicts, IDConfigurationTOML), []TemplateFile{{Source: "web/config.toml.tmpl", Target: "configs/config.toml"}}, []GoModule{{Path: "github.com/pelletier/go-toml/v2", Version: "v2.3.0"}}),
-		databaseComponent(IDDatabaseNone, "No database", "Project without a database integration.", without(databaseConflicts, IDDatabaseNone)),
-		databaseComponent(IDDatabasePostgres, "Postgres database", "PostgreSQL database integration.", without(databaseConflicts, IDDatabasePostgres)),
-		databaseComponent(IDDatabaseMySQL, "MySQL database", "MySQL database integration.", without(databaseConflicts, IDDatabaseMySQL)),
-		databaseComponent(IDDatabaseSQLite, "SQLite database", "SQLite database integration.", without(databaseConflicts, IDDatabaseSQLite)),
+		databaseComponent(IDDatabaseNone, "No database", "Project without a database integration.", without(databaseComponents, IDDatabaseNone), nil),
+		databaseComponent(IDDatabasePostgres, "Postgres database", "PostgreSQL database integration.", []string{IDDatabaseNone}, []TemplateFile{
+			{Source: "web/postgres.go.tmpl", Target: "{{ if eq .Recipe.Layout.Style \"minimal\" }}internal/app/postgres.go{{ else }}internal/database/postgres.go{{ end }}"},
+		}),
+		databaseComponent(IDDatabaseMySQL, "MySQL database", "MySQL database integration.", []string{IDDatabaseNone}, []TemplateFile{
+			{Source: "web/mysql.go.tmpl", Target: "{{ if eq .Recipe.Layout.Style \"minimal\" }}internal/app/mysql.go{{ else }}internal/database/mysql.go{{ end }}"},
+		}),
+		databaseComponent(IDDatabaseSQLite, "SQLite database", "SQLite database integration.", []string{IDDatabaseNone}, []TemplateFile{
+			{Source: "web/sqlite.go.tmpl", Target: "{{ if eq .Recipe.Layout.Style \"minimal\" }}internal/app/sqlite.go{{ else }}internal/database/sqlite.go{{ end }}"},
+		}),
+		databaseComponent(IDDatabaseRedis, "Redis database", "Redis database integration.", []string{IDDatabaseNone}, []TemplateFile{
+			{Source: "web/redis.go.tmpl", Target: "{{ if eq .Recipe.Layout.Style \"minimal\" }}internal/app/redis.go{{ else }}internal/database/redis.go{{ end }}"},
+		}),
+		databaseComponent(IDDatabaseMongoDB, "MongoDB database", "MongoDB database integration.", []string{IDDatabaseNone}, []TemplateFile{
+			{Source: "web/mongodb.go.tmpl", Target: "{{ if eq .Recipe.Layout.Style \"minimal\" }}internal/app/mongodb.go{{ else }}internal/database/mongodb.go{{ end }}"},
+		}),
 		{
 			ID:          IDDatabaseFrameworkPGX,
 			Category:    CategoryDatabaseFramework,
@@ -138,6 +152,10 @@ func defaultComponents() []Component {
 			Name:        "Goose migrations",
 			Description: "Database migrations through goose.",
 			Conflicts:   []string{IDMigrationsNone, IDMigrationsMigrate},
+			Files: []TemplateFile{
+				{Source: "web/migrations.go.tmpl", Target: "{{ if eq .Recipe.Layout.Style \"minimal\" }}internal/app/migrations.go{{ else }}internal/database/migrations.go{{ end }}"},
+				{Source: "web/migration_goose.sql.tmpl", Target: "scripts/migrations/000001_init.sql"},
+			},
 		},
 		{
 			ID:          IDMigrationsMigrate,
@@ -145,6 +163,11 @@ func defaultComponents() []Component {
 			Name:        "golang-migrate migrations",
 			Description: "Database migrations through golang-migrate.",
 			Conflicts:   []string{IDMigrationsNone, IDMigrationsGoose},
+			Files: []TemplateFile{
+				{Source: "web/migrations.go.tmpl", Target: "{{ if eq .Recipe.Layout.Style \"minimal\" }}internal/app/migrations.go{{ else }}internal/database/migrations.go{{ end }}"},
+				{Source: "web/migration_migrate_up.sql.tmpl", Target: "scripts/migrations/000001_init.up.sql"},
+				{Source: "web/migration_migrate_down.sql.tmpl", Target: "scripts/migrations/000001_init.down.sql"},
+			},
 		},
 		{
 			ID:          IDLoggingSlog,
@@ -189,7 +212,7 @@ func defaultComponents() []Component {
 			Category:    CategoryObservability,
 			Name:        "Readiness endpoint",
 			Description: "Readiness endpoint for dependency checks.",
-			Files:       []TemplateFile{{Source: "web/ready.go.tmpl", Target: "{{ if eq .Recipe.Layout.Style \"minimal\" }}internal/app/ready.go{{ else }}internal/server/handler/ready.go{{ end }}"}},
+			Files:       []TemplateFile{{Source: "web/ready.go.tmpl", Target: "{{ if eq .Recipe.Layout.Style \"minimal\" }}internal/app/ready.go{{ else }}internal/server/ready.go{{ end }}"}},
 		},
 		{
 			ID:          IDDeploymentDocker,
@@ -243,13 +266,14 @@ func configurationComponent(id string, name string, description string, conflict
 	}
 }
 
-func databaseComponent(id string, name string, description string, conflicts []string) Component {
+func databaseComponent(id string, name string, description string, conflicts []string, files []TemplateFile) Component {
 	return Component{
 		ID:          id,
 		Category:    CategoryDatabase,
 		Name:        name,
 		Description: description,
 		Conflicts:   conflicts,
+		Files:       files,
 	}
 }
 

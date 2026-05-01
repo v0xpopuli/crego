@@ -1,0 +1,60 @@
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+package app
+{{ else -}}
+package database
+{{ end }}
+
+import (
+	"context"
+	"fmt"
+
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/mongo/readpref"
+{{ if ne .Recipe.Layout.Style "minimal" -}}
+	"{{ .ModulePath }}/internal/logging"
+{{ end -}}
+)
+
+type MongoDBConfig struct {
+	URI string
+}
+
+type MongoDBClient struct {
+	config MongoDBConfig
+	logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}
+	Client *mongo.Client
+}
+
+func NewMongoDBClient(ctx context.Context, cfg MongoDBConfig, logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) (*MongoDBClient, error) {
+	if cfg.URI == "" {
+		return nil, fmt.Errorf("mongodb_uri is required")
+	}
+	client, err := mongo.Connect(options.Client().ApplyURI(cfg.URI))
+	if err != nil {
+		return nil, fmt.Errorf("open mongodb: %w", err)
+	}
+	result := &MongoDBClient{config: cfg, logger: logger, Client: client}
+	if err := result.Ping(ctx); err != nil {
+		_ = client.Disconnect(ctx)
+		return nil, fmt.Errorf("ping mongodb: %w", err)
+	}
+	if logger != nil {
+		logger.Info("database connected", "driver", "mongodb")
+	}
+	return result, nil
+}
+
+func (c *MongoDBClient) Ping(ctx context.Context) error {
+	return c.Client.Ping(ctx, readpref.Primary())
+}
+
+func (c *MongoDBClient) Shutdown(ctx context.Context) error {
+	if err := c.Client.Disconnect(ctx); err != nil {
+		return err
+	}
+	if c.logger != nil {
+		c.logger.Info("database connection closed", "driver", "mongodb")
+	}
+	return nil
+}

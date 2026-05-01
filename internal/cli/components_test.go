@@ -20,8 +20,12 @@ func (s *CliTestSuite) TestComponentsListCommand() {
 		s.Require().Contains(out, "  json - Configuration loaded from JSON files.")
 		s.Require().Contains(out, "  toml - Configuration loaded from TOML files.")
 		s.Require().Contains(out, "  gin - HTTP server built with Gin.")
-		s.Require().Contains(out, "  framework:")
-		s.Require().Contains(out, "    gorm - Database access through GORM.")
+		s.Require().Contains(out, "sql_database:")
+		s.Require().Contains(out, "  none - Project without a sql database integration.")
+		s.Require().Contains(out, "orm_framework:")
+		s.Require().Contains(out, "  gorm - Database access through GORM.")
+		s.Require().Contains(out, "nosql_database:")
+		s.Require().Contains(out, "  none - Project without a nosql database integration.")
 		s.Require().Contains(out, "  slog - Structured logging through the Go standard library slog package.")
 		s.Require().Contains(out, "  zap - Structured logging through zap.")
 		s.Require().Contains(out, "  zerolog - Structured logging through zerolog.")
@@ -49,21 +53,40 @@ func (s *CliTestSuite) TestComponentsListCommand() {
 		s.Require().NotContains(out, "database.postgres")
 	})
 
-	s.Run("filters database category including frameworks", func() {
-		out, _, err := s.executeCLI("components", "list", "--category", "database")
+	s.Run("filters sql database category", func() {
+		out, _, err := s.executeCLI("components", "list", "--category", "sql_database")
 
 		s.Require().NoError(err)
-		s.Require().Equal([]string{"database"}, topLevelHeaders(out))
-		s.Require().Contains(out, "  none -")
+		s.Require().Equal([]string{"sql_database"}, topLevelHeaders(out))
+		s.Require().Contains(out, "  none - Project without a sql database integration.")
 		s.Require().Contains(out, "  postgres -")
 		s.Require().Contains(out, "  mysql -")
 		s.Require().Contains(out, "  sqlite -")
-		s.Require().Contains(out, "  framework:")
-		s.Require().Contains(out, "    pgx -")
-		s.Require().Contains(out, "    sql -")
-		s.Require().Contains(out, "    gorm -")
+		s.Require().NotContains(out, "  redis -")
 		s.Require().NotContains(out, "database.postgres")
+	})
+
+	s.Run("filters orm framework category", func() {
+		out, _, err := s.executeCLI("components", "list", "--category", "orm_framework")
+
+		s.Require().NoError(err)
+		s.Require().Equal([]string{"orm_framework"}, topLevelHeaders(out))
+		s.Require().Contains(out, "  pgx -")
+		s.Require().Contains(out, "  sql -")
+		s.Require().Contains(out, "  gorm -")
 		s.Require().NotContains(out, "database.framework.gorm")
+	})
+
+	s.Run("filters nosql database category", func() {
+		out, _, err := s.executeCLI("components", "list", "--category", "nosql_database")
+
+		s.Require().NoError(err)
+		s.Require().Equal([]string{"nosql_database"}, topLevelHeaders(out))
+		s.Require().Contains(out, "  none - Project without a nosql database integration.")
+		s.Require().Contains(out, "  redis -")
+		s.Require().Contains(out, "  mongodb -")
+		s.Require().NotContains(out, "  postgres -")
+		s.Require().NotContains(out, "database.mongodb")
 	})
 
 	s.Run("prints valid json", func() {
@@ -75,6 +98,7 @@ func (s *CliTestSuite) TestComponentsListCommand() {
 		s.Require().NotEmpty(result.Categories)
 		s.Require().Equal("project", result.Categories[0].Category)
 		s.Require().NotNil(result.Categories[0].Components)
+		s.Require().NotContains(out, "support_status")
 	})
 
 	s.Run("rejects unknown category", func() {
@@ -84,7 +108,8 @@ func (s *CliTestSuite) TestComponentsListCommand() {
 		s.Require().Equal(1, ExitCode(err))
 		s.Require().Contains(err.Error(), `unknown component category "routing"`)
 		s.Require().Contains(err.Error(), "server")
-		s.Require().Contains(err.Error(), "database")
+		s.Require().Contains(err.Error(), "sql_database")
+		s.Require().Contains(err.Error(), "nosql_database")
 	})
 }
 
@@ -116,6 +141,8 @@ func (s *CliTestSuite) TestComponentsShowCommand() {
 		"server.chi",
 		"server.gin",
 		"database.postgres",
+		"database.redis",
+		"database.mongodb",
 		"database.framework.gorm",
 		"configuration.yaml",
 		"logging.zap",
@@ -133,7 +160,8 @@ func (s *CliTestSuite) TestComponentsShowCommand() {
 			s.Require().Contains(out, "files:")
 			s.Require().Contains(out, "go_modules:")
 			s.Require().Contains(out, "hooks:")
-			s.Require().Contains(out, "support_status:")
+			s.Require().NotContains(out, "support_status:")
+			s.Require().NotContains(out, "support_note:")
 		})
 	}
 
@@ -150,6 +178,8 @@ func (s *CliTestSuite) TestComponentsShowCommand() {
 		s.Require().NotNil(result.Files)
 		s.Require().NotNil(result.GoModules)
 		s.Require().NotNil(result.Hooks)
+		s.Require().NotContains(out, "support_status")
+		s.Require().NotContains(out, "support_note")
 	})
 
 	s.Run("rejects unknown component", func() {

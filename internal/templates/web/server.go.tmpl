@@ -20,19 +20,16 @@ import (
 
 type Server struct {
 	httpServer *http.Server
-{{ if eq .Recipe.Layout.Style "minimal" -}}
-	logger     *Logger
-{{ else -}}
-	logger     *logging.Logger
-{{ end -}}
+	readiness  Checker
+	logger     {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}
 }
 
 {{ if eq .Recipe.Layout.Style "minimal" -}}
-func NewServer(cfg Config, logger *Logger) *Server {
+func NewServer(cfg Config, logger Logger, readiness Checker) *Server {
 {{ else -}}
-func NewServer(cfg config.Config, logger *logging.Logger) *Server {
+func NewServer(cfg config.Config, logger logging.Logger, readiness Checker) *Server {
 {{ end -}}
-	srv := &Server{logger: logger}
+	srv := &Server{logger: logger, readiness: readiness}
 	srv.httpServer = &http.Server{
 		Addr:              ":" + strconv.Itoa(cfg.HTTPPort),
 		Handler:           srv.routes(),
@@ -72,27 +69,25 @@ import (
 )
 
 type Server struct {
-	echo   *echo.Echo
-	addr   string
-{{ if eq .Recipe.Layout.Style "minimal" -}}
-	logger *Logger
-{{ else -}}
-	logger *logging.Logger
-{{ end -}}
+	echo      *echo.Echo
+	addr      string
+	readiness Checker
+	logger    {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}
 }
 
 {{ if eq .Recipe.Layout.Style "minimal" -}}
-func NewServer(cfg Config, logger *Logger) *Server {
+func NewServer(cfg Config, logger Logger, readiness Checker) *Server {
 {{ else -}}
-func NewServer(cfg config.Config, logger *logging.Logger) *Server {
+func NewServer(cfg config.Config, logger logging.Logger, readiness Checker) *Server {
 {{ end -}}
 	e := echo.New()
 	e.HideBanner = true
 	e.HidePort = true
 	srv := &Server{
-		echo:   e,
-		addr:   ":" + strconv.Itoa(cfg.HTTPPort),
-		logger: logger,
+		echo:      e,
+		addr:      ":" + strconv.Itoa(cfg.HTTPPort),
+		readiness: readiness,
+		logger:    logger,
 	}
 	srv.registerRoutes()
 	return srv
@@ -127,26 +122,24 @@ import (
 )
 
 type Server struct {
-	app    *fiber.App
-	addr   string
-{{ if eq .Recipe.Layout.Style "minimal" -}}
-	logger *Logger
-{{ else -}}
-	logger *logging.Logger
-{{ end -}}
+	app       *fiber.App
+	addr      string
+	readiness Checker
+	logger    {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}
 }
 
 {{ if eq .Recipe.Layout.Style "minimal" -}}
-func NewServer(cfg Config, logger *Logger) *Server {
+func NewServer(cfg Config, logger Logger, readiness Checker) *Server {
 {{ else -}}
-func NewServer(cfg config.Config, logger *logging.Logger) *Server {
+func NewServer(cfg config.Config, logger logging.Logger, readiness Checker) *Server {
 {{ end -}}
 	srv := &Server{
 		app: fiber.New(fiber.Config{
 			DisableStartupMessage: true,
 		}),
-		addr:   ":" + strconv.Itoa(cfg.HTTPPort),
-		logger: logger,
+		addr:      ":" + strconv.Itoa(cfg.HTTPPort),
+		readiness: readiness,
+		logger:    logger,
 	}
 	srv.registerRoutes()
 	return srv

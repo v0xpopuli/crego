@@ -38,7 +38,7 @@ func renderFiles(ctx context.Context, templates fs.FS, source *recipe.Recipe, pl
 
 	result := make([]renderedFile, 0, len(plan.Files))
 	data := newRenderContext(source, plan)
-	funcs := templateFuncs(data.ComponentIDs)
+	funcs := templateFuncs(data.ComponentIDs, data.Recipe)
 	for _, file := range plan.Files {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -71,7 +71,7 @@ func RenderFileTargets(source *recipe.Recipe, plan *Plan) ([]component.TemplateF
 	}
 
 	data := newRenderContext(source, plan)
-	funcs := templateFuncs(data.ComponentIDs)
+	funcs := templateFuncs(data.ComponentIDs, data.Recipe)
 	files := make([]component.TemplateFile, 0, len(plan.Files))
 	for _, file := range plan.Files {
 		target, err := renderTemplateText(file.Source, file.Target, data, funcs)
@@ -149,10 +149,16 @@ func newRenderContext(source *recipe.Recipe, plan *Plan) renderContext {
 	}
 }
 
-func templateFuncs(componentIDs []string) template.FuncMap {
+func templateFuncs(componentIDs []string, r *recipe.Recipe) template.FuncMap {
 	selected := make(map[string]struct{}, len(componentIDs))
 	for _, id := range componentIDs {
 		selected[id] = struct{}{}
+	}
+	drivers := map[string]struct{}{}
+	if r != nil {
+		for _, driver := range recipe.DatabaseDrivers(r.Database) {
+			drivers[driver] = struct{}{}
+		}
 	}
 
 	return template.FuncMap{
@@ -160,9 +166,68 @@ func templateFuncs(componentIDs []string) template.FuncMap {
 			_, ok := selected[id]
 			return ok
 		},
-		"lower": strings.ToLower,
-		"title": title,
+		"hasDatabase": func(driver string) bool {
+			_, ok := drivers[driver]
+			return ok
+		},
+		"anyDatabaseEnabled": func() bool {
+			for driver := range drivers {
+				if driver != recipe.DatabaseDriverNone {
+					return true
+				}
+			}
+			return false
+		},
+		"anySQLDatabaseEnabled": func() bool {
+			for driver := range drivers {
+				if sqlDatabase(driver) {
+					return true
+				}
+			}
+			return false
+		},
+		"databaseEnabled": databaseEnabled,
+		"configTag":       configTag(r),
+		"sqlDatabase":     sqlDatabase,
+		"sqlMigrations":   sqlMigrations,
+		"lower":           strings.ToLower,
+		"title":           title,
 	}
+}
+
+func configTag(r *recipe.Recipe) func(string) string {
+	return func(name string) string {
+		if r == nil {
+			return ""
+		}
+		switch r.Configuration.Format {
+		case recipe.ConfigurationFormatJSON:
+			return fmt.Sprintf("`json:%q`", name)
+		case recipe.ConfigurationFormatTOML:
+			return fmt.Sprintf("`toml:%q`", name)
+		case recipe.ConfigurationFormatYAML:
+			return fmt.Sprintf("`yaml:%q`", name)
+		default:
+			return ""
+		}
+	}
+}
+
+func databaseEnabled(driver string) bool {
+	return driver != "" && driver != recipe.DatabaseDriverNone
+}
+
+func sqlDatabase(driver string) bool {
+	switch driver {
+	case recipe.DatabaseDriverPostgres, recipe.DatabaseDriverMySQL, recipe.DatabaseDriverSQLite:
+		return true
+	default:
+		return false
+	}
+}
+
+func sqlMigrations(migrations string) bool {
+	return migrations == recipe.DatabaseMigrationsGoose || migrations == recipe.DatabaseMigrationsMigrate
 }
 
 func title(value string) string {

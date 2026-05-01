@@ -21,16 +21,23 @@ import (
 )
 
 type Config struct {
-	AppEnv    string `json:"app_env" toml:"app_env" yaml:"app_env"`
-	HTTPPort  int    `json:"http_port" toml:"http_port" yaml:"http_port"`
-	LogFormat string `json:"log_format" toml:"log_format" yaml:"log_format"`
+	AppEnv    string {{ configTag "app_env" }}
+	HTTPPort  int    {{ configTag "http_port" }}
+	LogFormat string {{ configTag "log_format" }}
+{{ if hasDatabase "postgres" }}	PostgresURL string {{ configTag "postgres_url" }}
+{{ end }}{{ if hasDatabase "mysql" }}	MySQLURL string {{ configTag "mysql_url" }}
+{{ end }}{{ if hasDatabase "sqlite" }}	SQLiteURL string {{ configTag "sqlite_url" }}
+{{ end }}{{ if and (anySQLDatabaseEnabled) (sqlMigrations .Recipe.Database.Migrations) }}	DatabaseMigrations string {{ configTag "database_migrations" }}
+{{ end }}{{ if hasDatabase "redis" }}	RedisAddress string {{ configTag "redis_address" }}
+{{ end }}{{ if hasDatabase "mongodb" }}	MongoDBURI string {{ configTag "mongodb_uri" }}
+{{ end -}}
 }
 
-type ConfigOptions struct {
+type Options struct {
 	Path string
 }
 
-func LoadConfig(opts ConfigOptions) (Config, error) {
+func LoadConfig(opts Options) (Config, error) {
 	cfg := defaultConfig()
 {{ if eq .Recipe.Configuration.Format "env" }}
 	_ = opts
@@ -70,6 +77,13 @@ func defaultConfig() Config {
 		AppEnv:    "development",
 		HTTPPort:  {{ .Recipe.Server.Port }},
 		LogFormat: "{{ .Recipe.Logging.Format }}",
+{{ if hasDatabase "postgres" }}		PostgresURL: "postgres://postgres:postgres@localhost:5432/app?sslmode=disable",
+{{ end }}{{ if hasDatabase "mysql" }}		MySQLURL: "mysql://root:root@tcp(localhost:3306)/app?parseTime=true",
+{{ end }}{{ if hasDatabase "sqlite" }}		SQLiteURL: "file:app.db?_foreign_keys=on",
+{{ end }}{{ if and (anySQLDatabaseEnabled) (sqlMigrations .Recipe.Database.Migrations) }}		DatabaseMigrations: "file://scripts/migrations",
+{{ end }}{{ if hasDatabase "redis" }}		RedisAddress: "localhost:6379",
+{{ end }}{{ if hasDatabase "mongodb" }}		MongoDBURI: "mongodb://localhost:27017/app",
+{{ end -}}
 	}
 }
 {{ if ne .Recipe.Configuration.Format "env" }}
@@ -97,6 +111,38 @@ func applyEnvOverrides(cfg *Config) error {
 	if value := os.Getenv("LOG_FORMAT"); value != "" {
 		cfg.LogFormat = value
 	}
+{{ if hasDatabase "postgres" }}
+	if value := os.Getenv("POSTGRES_URL"); value != "" {
+		cfg.PostgresURL = value
+	}
+{{ end -}}
+{{ if hasDatabase "mysql" }}
+	if value := os.Getenv("MYSQL_URL"); value != "" {
+		cfg.MySQLURL = value
+	}
+{{ end -}}
+{{ if hasDatabase "sqlite" }}
+	if value := os.Getenv("SQLITE_URL"); value != "" {
+		cfg.SQLiteURL = value
+	}
+{{ end -}}
+{{ if anySQLDatabaseEnabled }}
+{{ if sqlMigrations .Recipe.Database.Migrations }}
+	if value := os.Getenv("DATABASE_MIGRATIONS"); value != "" {
+		cfg.DatabaseMigrations = value
+	}
+{{ end -}}
+{{ end -}}
+{{ if hasDatabase "redis" }}
+	if value := os.Getenv("REDIS_ADDRESS"); value != "" {
+		cfg.RedisAddress = value
+	}
+{{ end -}}
+{{ if hasDatabase "mongodb" }}
+	if value := os.Getenv("MONGODB_URI"); value != "" {
+		cfg.MongoDBURI = value
+	}
+{{ end -}}
 	return nil
 }
 
@@ -110,5 +156,37 @@ func validateConfig(cfg Config) error {
 	if cfg.LogFormat != "text" && cfg.LogFormat != "json" {
 		return fmt.Errorf("log_format must be text or json")
 	}
+{{ if hasDatabase "postgres" }}
+	if cfg.PostgresURL == "" {
+		return fmt.Errorf("postgres_url is required")
+	}
+{{ end -}}
+{{ if hasDatabase "mysql" }}
+	if cfg.MySQLURL == "" {
+		return fmt.Errorf("mysql_url is required")
+	}
+{{ end -}}
+{{ if hasDatabase "sqlite" }}
+	if cfg.SQLiteURL == "" {
+		return fmt.Errorf("sqlite_url is required")
+	}
+{{ end -}}
+{{ if anySQLDatabaseEnabled }}
+{{ if sqlMigrations .Recipe.Database.Migrations }}
+	if cfg.DatabaseMigrations == "" {
+		return fmt.Errorf("database_migrations is required")
+	}
+{{ end -}}
+{{ end -}}
+{{ if hasDatabase "redis" }}
+	if cfg.RedisAddress == "" {
+		return fmt.Errorf("redis_address is required")
+	}
+{{ end -}}
+{{ if hasDatabase "mongodb" }}
+	if cfg.MongoDBURI == "" {
+		return fmt.Errorf("mongodb_uri is required")
+	}
+{{ end -}}
 	return nil
 }

@@ -42,14 +42,26 @@ func ApplyDefaults(r *Recipe) *Recipe {
 	}
 
 	if r.Database.Driver == "" {
-		r.Database.Driver = DatabaseDriverNone
+		if len(r.Database.Drivers) == 0 {
+			r.Database.Driver = DatabaseDriverNone
+		} else {
+			r.Database.Driver = primaryDatabaseDriver(r.Database.Drivers)
+		}
 	}
+	if len(r.Database.Drivers) == 0 {
+		r.Database.Drivers = []string{r.Database.Driver}
+	}
+	r.Database.Driver = primaryDatabaseDriver(r.Database.Drivers)
 	if r.Database.Framework == "" {
-		r.Database.Framework = defaultDatabaseFramework(r.Database.Driver)
+		r.Database.Framework = defaultDatabaseFramework(r.Database.Drivers)
 	}
 	if r.Database.Migrations == "" {
 		r.Database.Migrations = DatabaseMigrationsNone
 	}
+	r.SQLDatabase = primarySQLDatabaseDriver(r.Database.Drivers)
+	r.ORMFramework = r.Database.Framework
+	r.NoSQLDatabase = noSQLDatabaseDrivers(r.Database.Drivers)
+	r.Migrations = r.Database.Migrations
 
 	if r.Logging.Framework == "" {
 		r.Logging.Framework = defaultLoggingFramework
@@ -61,8 +73,16 @@ func ApplyDefaults(r *Recipe) *Recipe {
 	return r
 }
 
-func defaultDatabaseFramework(driver string) string {
-	switch driver {
+func defaultDatabaseFramework(drivers []string) string {
+	sqlDrivers := sqlDatabaseDrivers(drivers)
+	if len(sqlDrivers) > 1 {
+		return DatabaseFrameworkDatabaseSQL
+	}
+	if len(sqlDrivers) == 0 {
+		return DatabaseFrameworkNone
+	}
+
+	switch sqlDrivers[0] {
 	case DatabaseDriverPostgres:
 		return DatabaseFrameworkPGX
 	case DatabaseDriverMySQL, DatabaseDriverSQLite:

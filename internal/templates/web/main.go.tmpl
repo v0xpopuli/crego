@@ -51,15 +51,15 @@ func loadConfig() (config.Config, error) {
 {{ end -}}
 {{ if eq .Recipe.Configuration.Format "env" -}}
 {{ if eq .Recipe.Layout.Style "minimal" -}}
-	return app.LoadConfig(app.ConfigOptions{})
+	return app.LoadConfig(app.Options{})
 {{ else -}}
-	return config.LoadConfig(config.ConfigOptions{})
+	return config.LoadConfig(config.Options{})
 {{ end -}}
 {{ else -}}
 {{ if eq .Recipe.Layout.Style "minimal" -}}
-	return app.LoadConfig(app.ConfigOptions{Path: getConfigPath()})
+	return app.LoadConfig(app.Options{Path: getConfigPath()})
 {{ else -}}
-	return config.LoadConfig(config.ConfigOptions{Path: getConfigPath()})
+	return config.LoadConfig(config.Options{Path: getConfigPath()})
 {{ end -}}
 {{ end -}}
 }

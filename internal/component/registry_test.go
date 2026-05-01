@@ -37,6 +37,8 @@ func (s *RegistryTestSuite) TestListIncludesMVPComponents() {
 		IDDatabasePostgres,
 		IDDatabaseMySQL,
 		IDDatabaseSQLite,
+		IDDatabaseRedis,
+		IDDatabaseMongoDB,
 		IDDatabaseFrameworkPGX,
 		IDDatabaseFrameworkSQL,
 		IDDatabaseFrameworkGORM,

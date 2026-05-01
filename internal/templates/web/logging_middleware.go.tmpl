@@ -31,11 +31,7 @@ func (r *statusRecorder) Write(data []byte) (int, error) {
 	return r.ResponseWriter.Write(data)
 }
 
-{{ if eq .Recipe.Layout.Style "minimal" -}}
-func Logging(logger *Logger) func(http.Handler) http.Handler {
-{{ else -}}
-func Logging(logger *logging.Logger) func(http.Handler) http.Handler {
-{{ end -}}
+func Logging(logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
@@ -59,16 +55,12 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-{{ if ne .Recipe.Layout.Style "minimal" }}
+{{ if ne .Recipe.Layout.Style "minimal" -}}
 	"{{ .ModulePath }}/internal/logging"
 {{ end -}}
 )
 
-{{ if eq .Recipe.Layout.Style "minimal" -}}
-func Logging(logger *Logger) gin.HandlerFunc {
-{{ else -}}
-func Logging(logger *logging.Logger) gin.HandlerFunc {
-{{ end -}}
+func Logging(logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		c.Next()
@@ -89,16 +81,12 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-{{ if ne .Recipe.Layout.Style "minimal" }}
+{{ if ne .Recipe.Layout.Style "minimal" -}}
 	"{{ .ModulePath }}/internal/logging"
 {{ end -}}
 )
 
-{{ if eq .Recipe.Layout.Style "minimal" -}}
-func Logging(logger *Logger) echo.MiddlewareFunc {
-{{ else -}}
-func Logging(logger *logging.Logger) echo.MiddlewareFunc {
-{{ end -}}
+func Logging(logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			start := time.Now()
@@ -128,16 +116,12 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-{{ if ne .Recipe.Layout.Style "minimal" }}
+{{ if ne .Recipe.Layout.Style "minimal" -}}
 	"{{ .ModulePath }}/internal/logging"
 {{ end -}}
 )
 
-{{ if eq .Recipe.Layout.Style "minimal" -}}
-func Logging(logger *Logger) fiber.Handler {
-{{ else -}}
-func Logging(logger *logging.Logger) fiber.Handler {
-{{ end -}}
+func Logging(logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		start := time.Now()
 		err := c.Next()

@@ -77,8 +77,7 @@ func ShouldPrintError(err error) bool {
 		return false
 	}
 
-	var commandErr *commandError
-	if errors.As(err, &commandErr) && commandErr.handled {
+	if commandErr, ok := errors.AsType[*commandError](err); ok && commandErr.handled {
 		return false
 	}
 

@@ -1,0 +1,96 @@
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+package app
+{{ else -}}
+package middleware
+{{ end }}
+
+{{ if or (eq .Recipe.Server.Framework "nethttp") (eq .Recipe.Server.Framework "chi") -}}
+import (
+	"net/http"
+
+{{ if ne .Recipe.Layout.Style "minimal" -}}
+	"{{ .ModulePath }}/internal/logging"
+{{ end -}}
+)
+
+func Recover(logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					logger.Error("panic recovered", "error", recovered, "method", r.Method, "path", r.URL.Path)
+					w.WriteHeader(http.StatusInternalServerError)
+					_, _ = w.Write([]byte("{\"status\":\"error\"}\n"))
+				}
+			}()
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+{{ end -}}
+{{ if eq .Recipe.Server.Framework "gin" -}}
+import (
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+{{ if ne .Recipe.Layout.Style "minimal" -}}
+	"{{ .ModulePath }}/internal/logging"
+{{ end -}}
+)
+
+func Recover(logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				logger.Error("panic recovered", "error", recovered, "method", c.Request.Method, "path", c.Request.URL.Path)
+				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"status": "error"})
+			}
+		}()
+		c.Next()
+	}
+}
+{{ end -}}
+{{ if eq .Recipe.Server.Framework "echo" -}}
+import (
+	"net/http"
+
+	"github.com/labstack/echo/v4"
+{{ if ne .Recipe.Layout.Style "minimal" -}}
+	"{{ .ModulePath }}/internal/logging"
+{{ end -}}
+)
+
+func Recover(logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					logger.Error("panic recovered", "error", recovered, "method", c.Request().Method, "path", c.Request().URL.Path)
+					_ = c.JSON(http.StatusInternalServerError, map[string]string{"status": "error"})
+				}
+			}()
+			return next(c)
+		}
+	}
+}
+{{ end -}}
+{{ if eq .Recipe.Server.Framework "fiber" -}}
+import (
+	"github.com/gofiber/fiber/v2"
+{{ if ne .Recipe.Layout.Style "minimal" -}}
+	"{{ .ModulePath }}/internal/logging"
+{{ end -}}
+)
+
+func Recover(logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				logger.Error("panic recovered", "error", recovered, "method", c.Method(), "path", c.Path())
+				_ = c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"status": "error"})
+			}
+		}()
+		return c.Next()
+	}
+}
+{{ end -}}

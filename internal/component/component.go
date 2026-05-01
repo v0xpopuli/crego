@@ -7,6 +7,9 @@ const (
 	CategoryConfiguration     = "configuration"
 	CategoryDatabase          = "database"
 	CategoryDatabaseFramework = "database.framework"
+	CategorySQLDatabase       = "sql_database"
+	CategoryORMFramework      = "orm_framework"
+	CategoryNoSQLDatabase     = "nosql_database"
 	CategoryMigrations        = "migrations"
 	CategoryLogging           = "logging"
 	CategoryObservability     = "observability"
@@ -34,6 +37,8 @@ const (
 	IDDatabasePostgres = "database.postgres"
 	IDDatabaseMySQL    = "database.mysql"
 	IDDatabaseSQLite   = "database.sqlite"
+	IDDatabaseRedis    = "database.redis"
+	IDDatabaseMongoDB  = "database.mongodb"
 
 	IDDatabaseFrameworkPGX  = "database.framework.pgx"
 	IDDatabaseFrameworkSQL  = "database.framework.sql"

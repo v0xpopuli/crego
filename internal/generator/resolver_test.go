@@ -65,7 +65,6 @@ func (s *ResolverTestSuite) TestResolveWebGinMySQL() {
 		component.IDConfigurationEnv,
 		component.IDDatabaseMySQL,
 		component.IDDatabaseFrameworkSQL,
-		component.IDMigrationsNone,
 		component.IDLoggingZerolog,
 	}, planComponentIDs(plan))
 }
@@ -85,9 +84,56 @@ func (s *ResolverTestSuite) TestResolveWebNetHTTPSQLite() {
 		component.IDConfigurationEnv,
 		component.IDDatabaseSQLite,
 		component.IDDatabaseFrameworkSQL,
-		component.IDMigrationsNone,
 		component.IDLoggingSlog,
 	}, planComponentIDs(plan))
+}
+
+func (s *ResolverTestSuite) TestResolveWebRedisAndMongoDB() {
+	for _, tc := range []struct {
+		driver string
+		id     string
+		module string
+	}{
+		{driver: recipe.DatabaseDriverRedis, id: component.IDDatabaseRedis, module: "github.com/redis/go-redis/v9"},
+		{driver: recipe.DatabaseDriverMongoDB, id: component.IDDatabaseMongoDB, module: "go.mongodb.org/mongo-driver/v2"},
+	} {
+		s.Run(tc.driver, func() {
+			r := baseRecipe(recipe.ProjectTypeWeb)
+			r.Database.Driver = tc.driver
+
+			plan, err := Resolve(component.NewRegistry(), r)
+
+			s.Require().NoError(err)
+			s.Require().Contains(planComponentIDs(plan), tc.id)
+			s.Require().NotContains(planComponentIDs(plan), component.IDDatabaseFrameworkSQL)
+			s.Require().NotContains(planComponentIDs(plan), component.IDMigrationsMigrate)
+			s.Require().Contains(planGoModulePaths(plan), tc.module)
+		})
+	}
+}
+
+func (s *ResolverTestSuite) TestResolveWebPostgresMySQLRedisMongoDB() {
+	r := baseRecipe(recipe.ProjectTypeWeb)
+	r.Database.Drivers = []string{recipe.DatabaseDriverPostgres, recipe.DatabaseDriverMySQL, recipe.DatabaseDriverRedis, recipe.DatabaseDriverMongoDB}
+	r.Database.Framework = recipe.DatabaseFrameworkDatabaseSQL
+	r.Database.Migrations = recipe.DatabaseMigrationsMigrate
+
+	plan, err := Resolve(component.NewRegistry(), r)
+
+	s.Require().NoError(err)
+	ids := planComponentIDs(plan)
+	s.Require().Contains(ids, component.IDDatabasePostgres)
+	s.Require().Contains(ids, component.IDDatabaseMySQL)
+	s.Require().Contains(ids, component.IDDatabaseRedis)
+	s.Require().Contains(ids, component.IDDatabaseMongoDB)
+	s.Require().Contains(ids, component.IDDatabaseFrameworkSQL)
+	s.Require().Contains(ids, component.IDMigrationsMigrate)
+	paths := planGoModulePaths(plan)
+	s.Require().Contains(paths, "github.com/jackc/pgx/v5")
+	s.Require().Contains(paths, "github.com/go-sql-driver/mysql")
+	s.Require().Contains(paths, "github.com/redis/go-redis/v9")
+	s.Require().Contains(paths, "go.mongodb.org/mongo-driver/v2")
+	s.Require().Contains(paths, "github.com/golang-migrate/migrate/v4")
 }
 
 func (s *ResolverTestSuite) TestResolveCLIBasic() {
@@ -145,6 +191,75 @@ func (s *ResolverTestSuite) TestRejectsMigrationsWithoutDatabase() {
 
 	s.Require().Error(err)
 	s.Require().Contains(err.Error(), "database.migrations=goose requires database.driver to be postgres, mysql, or sqlite")
+}
+
+func (s *ResolverTestSuite) TestRejectsNoSQLMigrationsAndFrameworks() {
+	r := baseRecipe(recipe.ProjectTypeWeb)
+	r.Database.Driver = recipe.DatabaseDriverMongoDB
+	r.Database.Framework = recipe.DatabaseFrameworkGORM
+	r.Database.Migrations = recipe.DatabaseMigrationsGoose
+
+	_, err := Resolve(component.NewRegistry(), r)
+
+	s.Require().Error(err)
+	s.Require().Contains(err.Error(), "database.framework=gorm is only supported with SQL database drivers")
+	s.Require().Contains(err.Error(), "database.migrations=goose is only supported with SQL database drivers")
+}
+
+func (s *ResolverTestSuite) TestAddsExactDatabaseGoModules() {
+	cases := []struct {
+		name      string
+		driver    string
+		framework string
+		migration string
+		expected  []string
+		absent    []string
+	}{
+		{
+			name:      "postgres pgx goose",
+			driver:    recipe.DatabaseDriverPostgres,
+			framework: recipe.DatabaseFrameworkPGX,
+			migration: recipe.DatabaseMigrationsGoose,
+			expected:  []string{"github.com/jackc/pgx/v5", "github.com/pressly/goose/v3"},
+			absent:    []string{"gorm.io/gorm", "github.com/golang-migrate/migrate/v4"},
+		},
+		{
+			name:      "mysql gorm migrate",
+			driver:    recipe.DatabaseDriverMySQL,
+			framework: recipe.DatabaseFrameworkGORM,
+			migration: recipe.DatabaseMigrationsMigrate,
+			expected:  []string{"gorm.io/gorm", "gorm.io/driver/mysql", "github.com/golang-migrate/migrate/v4"},
+			absent:    []string{"github.com/go-sql-driver/mysql", "github.com/pressly/goose/v3"},
+		},
+		{
+			name:      "sqlite sql goose",
+			driver:    recipe.DatabaseDriverSQLite,
+			framework: recipe.DatabaseFrameworkDatabaseSQL,
+			migration: recipe.DatabaseMigrationsGoose,
+			expected:  []string{"modernc.org/sqlite", "github.com/pressly/goose/v3"},
+			absent:    []string{"gorm.io/gorm", "github.com/golang-migrate/migrate/v4"},
+		},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			r := baseRecipe(recipe.ProjectTypeWeb)
+			r.Database.Driver = tc.driver
+			r.Database.Framework = tc.framework
+			r.Database.Migrations = tc.migration
+
+			plan, err := Resolve(component.NewRegistry(), r)
+
+			s.Require().NoError(err)
+			paths := planGoModulePaths(plan)
+			for _, expected := range tc.expected {
+				s.Require().Contains(paths, expected)
+			}
+			for _, absent := range tc.absent {
+				s.Require().NotContains(paths, absent)
+			}
+		})
+	}
 }
 
 func (s *ResolverTestSuite) TestRejectsMissingDependency() {
@@ -234,4 +349,12 @@ func planComponentIDs(plan *Plan) []string {
 		ids = append(ids, component.ID)
 	}
 	return ids
+}
+
+func planGoModulePaths(plan *Plan) []string {
+	paths := make([]string, 0, len(plan.GoModules))
+	for _, module := range plan.GoModules {
+		paths = append(paths, module.Path)
+	}
+	return paths
 }

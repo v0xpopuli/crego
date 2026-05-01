@@ -1,0 +1,255 @@
+{{ if eq .Recipe.Layout.Style "minimal" -}}
+package app
+{{ else -}}
+package database
+{{ end }}
+
+import (
+	"context"
+{{ if eq .Recipe.Database.Migrations "goose" }}
+	"database/sql"
+{{ end }}
+{{ if eq .Recipe.Database.Migrations "migrate" }}
+	"errors"
+{{ end }}
+	"fmt"
+	"strings"
+
+{{ if eq .Recipe.Database.Migrations "goose" }}
+{{ if hasDatabase "postgres" }}
+	_ "github.com/jackc/pgx/v5/stdlib"
+{{ end }}
+{{ if hasDatabase "mysql" }}
+	_ "github.com/go-sql-driver/mysql"
+{{ end }}
+{{ if hasDatabase "sqlite" }}
+	_ "modernc.org/sqlite"
+{{ end }}
+	"github.com/pressly/goose/v3"
+{{ end }}
+{{ if eq .Recipe.Database.Migrations "migrate" }}
+	"github.com/golang-migrate/migrate/v4"
+{{ if hasDatabase "postgres" }}
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+{{ end }}
+{{ if hasDatabase "mysql" }}
+	_ "github.com/golang-migrate/migrate/v4/database/mysql"
+{{ end }}
+{{ if hasDatabase "sqlite" }}
+	_ "github.com/golang-migrate/migrate/v4/database/sqlite"
+{{ end }}
+	_ "github.com/golang-migrate/migrate/v4/source/file"
+{{ end }}
+{{ if ne .Recipe.Layout.Style "minimal" -}}
+	"{{ .ModulePath }}/internal/logging"
+{{ end -}}
+)
+
+{{ if hasDatabase "postgres" -}}
+func (c *PostgresClient) RunMigrations(ctx context.Context) error {
+	return runSQLMigrations(ctx, "postgres", c.address, c.config.Migrations, c.logger)
+}
+
+func (c *PostgresClient) RollbackMigration(ctx context.Context) error {
+	return rollbackSQLMigration(ctx, "postgres", c.address, c.config.Migrations, c.logger)
+}
+
+func (c *PostgresClient) MigrationStatus(ctx context.Context) error {
+	return sqlMigrationStatus(ctx, "postgres", c.address, c.config.Migrations, c.logger)
+}
+{{ end -}}
+{{ if hasDatabase "mysql" -}}
+func (c *MySQLClient) RunMigrations(ctx context.Context) error {
+	return runSQLMigrations(ctx, "mysql", c.address, c.config.Migrations, c.logger)
+}
+
+func (c *MySQLClient) RollbackMigration(ctx context.Context) error {
+	return rollbackSQLMigration(ctx, "mysql", c.address, c.config.Migrations, c.logger)
+}
+
+func (c *MySQLClient) MigrationStatus(ctx context.Context) error {
+	return sqlMigrationStatus(ctx, "mysql", c.address, c.config.Migrations, c.logger)
+}
+{{ end -}}
+{{ if hasDatabase "sqlite" -}}
+func (c *SQLiteClient) RunMigrations(ctx context.Context) error {
+	return runSQLMigrations(ctx, "sqlite", c.address, c.config.Migrations, c.logger)
+}
+
+func (c *SQLiteClient) RollbackMigration(ctx context.Context) error {
+	return rollbackSQLMigration(ctx, "sqlite", c.address, c.config.Migrations, c.logger)
+}
+
+func (c *SQLiteClient) MigrationStatus(ctx context.Context) error {
+	return sqlMigrationStatus(ctx, "sqlite", c.address, c.config.Migrations, c.logger)
+}
+{{ end }}
+
+{{ if eq .Recipe.Database.Migrations "goose" }}
+func runSQLMigrations(ctx context.Context, driver string, address string, source string, logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) error {
+	logInfo(logger, "running database migrations", "driver", driver, "source", source)
+	db, err := openMigrationDB(driver, address)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	if err := goose.SetDialect(gooseDialect(driver)); err != nil {
+		return fmt.Errorf("set goose dialect: %w", err)
+	}
+	if err := goose.UpContext(ctx, db, migrationDirectory(source)); err != nil {
+		return fmt.Errorf("run goose migrations: %w", err)
+	}
+	logInfo(logger, "database migrations applied", "driver", driver)
+	return nil
+}
+
+func rollbackSQLMigration(ctx context.Context, driver string, address string, source string, logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) error {
+	logInfo(logger, "rolling back database migration", "driver", driver, "source", source)
+	db, err := openMigrationDB(driver, address)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	if err := goose.SetDialect(gooseDialect(driver)); err != nil {
+		return fmt.Errorf("set goose dialect: %w", err)
+	}
+	if err := goose.DownContext(ctx, db, migrationDirectory(source)); err != nil {
+		return fmt.Errorf("rollback goose migration: %w", err)
+	}
+	logInfo(logger, "database migration rolled back", "driver", driver)
+	return nil
+}
+
+func sqlMigrationStatus(ctx context.Context, driver string, address string, source string, logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) error {
+	logInfo(logger, "checking database migration status", "driver", driver, "source", source)
+	db, err := openMigrationDB(driver, address)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	if err := goose.SetDialect(gooseDialect(driver)); err != nil {
+		return fmt.Errorf("set goose dialect: %w", err)
+	}
+	return goose.StatusContext(ctx, db, migrationDirectory(source))
+}
+
+func openMigrationDB(driver string, address string) (*sql.DB, error) {
+	db, err := sql.Open(gooseDriverName(driver), address)
+	if err != nil {
+		return nil, fmt.Errorf("open migration database: %w", err)
+	}
+	return db, nil
+}
+
+func gooseDriverName(driver string) string {
+	if driver == "postgres" {
+		return "pgx"
+	}
+	if driver == "sqlite" {
+		return "sqlite"
+	}
+	return driver
+}
+
+func gooseDialect(driver string) string {
+	if driver == "sqlite" {
+		return "sqlite3"
+	}
+	return driver
+}
+{{ end }}
+{{ if eq .Recipe.Database.Migrations "migrate" }}
+func runSQLMigrations(ctx context.Context, driver string, address string, source string, logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) error {
+	_ = ctx
+	logInfo(logger, "running database migrations", "driver", driver, "source", source)
+	runner, err := newMigrateRunner(driver, address, source)
+	if err != nil {
+		return err
+	}
+	defer runner.Close()
+	if err := runner.Up(); err != nil {
+		if errors.Is(err, migrate.ErrNoChange) {
+			logInfo(logger, "database migrations already current", "driver", driver)
+			return nil
+		}
+		return fmt.Errorf("run migrate migrations: %w", err)
+	}
+	logInfo(logger, "database migrations applied", "driver", driver)
+	return nil
+}
+
+func rollbackSQLMigration(ctx context.Context, driver string, address string, source string, logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) error {
+	_ = ctx
+	logInfo(logger, "rolling back database migration", "driver", driver, "source", source)
+	runner, err := newMigrateRunner(driver, address, source)
+	if err != nil {
+		return err
+	}
+	defer runner.Close()
+	if err := runner.Steps(-1); err != nil {
+		if errors.Is(err, migrate.ErrNoChange) {
+			logInfo(logger, "no database migration to roll back", "driver", driver)
+			return nil
+		}
+		return fmt.Errorf("rollback migrate migration: %w", err)
+	}
+	logInfo(logger, "database migration rolled back", "driver", driver)
+	return nil
+}
+
+func sqlMigrationStatus(ctx context.Context, driver string, address string, source string, logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) error {
+	_ = ctx
+	logInfo(logger, "checking database migration status", "driver", driver, "source", source)
+	runner, err := newMigrateRunner(driver, address, source)
+	if err != nil {
+		return err
+	}
+	defer runner.Close()
+	version, dirty, err := runner.Version()
+	if err != nil {
+		if errors.Is(err, migrate.ErrNilVersion) {
+			logInfo(logger, "database migrations not applied", "driver", driver)
+			return nil
+		}
+		return fmt.Errorf("read migration status: %w", err)
+	}
+	logInfo(logger, "database migration status", "driver", driver, "version", version, "dirty", dirty)
+	return nil
+}
+
+func newMigrateRunner(driver string, address string, source string) (*migrate.Migrate, error) {
+	runner, err := migrate.New(migrationSource(source), migrateDatabaseURL(driver, address))
+	if err != nil {
+		return nil, fmt.Errorf("create migrate runner: %w", err)
+	}
+	return runner, nil
+}
+
+func migrateDatabaseURL(driver string, address string) string {
+	if driver == "sqlite" && strings.HasPrefix(address, "file:") {
+		return "sqlite://" + strings.TrimPrefix(address, "file:")
+	}
+	if driver == "mysql" && !strings.HasPrefix(address, "mysql://") {
+		return "mysql://" + address
+	}
+	return address
+}
+{{ end }}
+
+func migrationSource(source string) string {
+	if source == "" {
+		return "file://scripts/migrations"
+	}
+	return source
+}
+
+func migrationDirectory(source string) string {
+	source = migrationSource(source)
+	return strings.TrimPrefix(source, "file://")
+}
+
+func logInfo(logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}, message string, args ...any) {
+	if logger != nil {
+		logger.Info(message, args...)
+	}
+}

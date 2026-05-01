@@ -10,29 +10,35 @@ import (
 	"os"
 )
 
-type Logger struct {
+type Logger interface {
+	Info(message string, args ...any)
+	Error(message string, args ...any)
+	Sync()
+}
+
+type defaultLogger struct {
 	inner *slog.Logger
 }
 
-func NewLogger(format string) (*Logger, error) {
+func NewLogger(format string) (Logger, error) {
 	var handler slog.Handler
 	if format == "json" {
 		handler = slog.NewJSONHandler(os.Stdout, nil)
 	} else {
 		handler = slog.NewTextHandler(os.Stdout, nil)
 	}
-	return &Logger{inner: slog.New(handler)}, nil
+	return &defaultLogger{inner: slog.New(handler)}, nil
 }
 
-func (l *Logger) Info(message string, args ...any) {
+func (l *defaultLogger) Info(message string, args ...any) {
 	l.inner.Info(message, args...)
 }
 
-func (l *Logger) Error(message string, args ...any) {
+func (l *defaultLogger) Error(message string, args ...any) {
 	l.inner.Error(message, args...)
 }
 
-func (l *Logger) Sync() {}
+func (l *defaultLogger) Sync() {}
 {{ end -}}
 {{ if eq .Recipe.Logging.Framework "zap" -}}
 import (
@@ -42,11 +48,17 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-type Logger struct {
+type Logger interface {
+	Info(message string, args ...any)
+	Error(message string, args ...any)
+	Sync()
+}
+
+type defaultLogger struct {
 	inner *zap.SugaredLogger
 }
 
-func NewLogger(format string) (*Logger, error) {
+func NewLogger(format string) (Logger, error) {
 	encoderConfig := zap.NewProductionEncoderConfig()
 	encoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 
@@ -58,18 +70,18 @@ func NewLogger(format string) (*Logger, error) {
 	}
 
 	core := zapcore.NewCore(encoder, zapcore.AddSync(os.Stdout), zapcore.InfoLevel)
-	return &Logger{inner: zap.New(core).Sugar()}, nil
+	return &defaultLogger{inner: zap.New(core).Sugar()}, nil
 }
 
-func (l *Logger) Info(message string, args ...any) {
+func (l *defaultLogger) Info(message string, args ...any) {
 	l.inner.Infow(message, args...)
 }
 
-func (l *Logger) Error(message string, args ...any) {
+func (l *defaultLogger) Error(message string, args ...any) {
 	l.inner.Errorw(message, args...)
 }
 
-func (l *Logger) Sync() {
+func (l *defaultLogger) Sync() {
 	_ = l.inner.Sync()
 }
 {{ end -}}
@@ -81,11 +93,17 @@ import (
 	"github.com/rs/zerolog"
 )
 
-type Logger struct {
+type Logger interface {
+	Info(message string, args ...any)
+	Error(message string, args ...any)
+	Sync()
+}
+
+type defaultLogger struct {
 	inner zerolog.Logger
 }
 
-func NewLogger(format string) (*Logger, error) {
+func NewLogger(format string) (Logger, error) {
 	var logger zerolog.Logger
 	if format == "json" {
 		logger = zerolog.New(os.Stdout).With().Timestamp().Logger()
@@ -93,18 +111,18 @@ func NewLogger(format string) (*Logger, error) {
 		writer := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339}
 		logger = zerolog.New(writer).With().Timestamp().Logger()
 	}
-	return &Logger{inner: logger}, nil
+	return &defaultLogger{inner: logger}, nil
 }
 
-func (l *Logger) Info(message string, args ...any) {
+func (l *defaultLogger) Info(message string, args ...any) {
 	l.inner.Info().Fields(logFields(args...)).Msg(message)
 }
 
-func (l *Logger) Error(message string, args ...any) {
+func (l *defaultLogger) Error(message string, args ...any) {
 	l.inner.Error().Fields(logFields(args...)).Msg(message)
 }
 
-func (l *Logger) Sync() {}
+func (l *defaultLogger) Sync() {}
 
 func logFields(args ...any) map[string]any {
 	fields := make(map[string]any, len(args)/2)
@@ -125,11 +143,17 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type Logger struct {
+type Logger interface {
+	Info(message string, args ...any)
+	Error(message string, args ...any)
+	Sync()
+}
+
+type defaultLogger struct {
 	inner *logrus.Logger
 }
 
-func NewLogger(format string) (*Logger, error) {
+func NewLogger(format string) (Logger, error) {
 	logger := logrus.New()
 	logger.SetOutput(os.Stdout)
 	logger.SetLevel(logrus.InfoLevel)
@@ -138,18 +162,18 @@ func NewLogger(format string) (*Logger, error) {
 	} else {
 		logger.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
 	}
-	return &Logger{inner: logger}, nil
+	return &defaultLogger{inner: logger}, nil
 }
 
-func (l *Logger) Info(message string, args ...any) {
+func (l *defaultLogger) Info(message string, args ...any) {
 	l.inner.WithFields(logFields(args...)).Info(message)
 }
 
-func (l *Logger) Error(message string, args ...any) {
+func (l *defaultLogger) Error(message string, args ...any) {
 	l.inner.WithFields(logFields(args...)).Error(message)
 }
 
-func (l *Logger) Sync() {}
+func (l *defaultLogger) Sync() {}
 
 func logFields(args ...any) logrus.Fields {
 	fields := make(logrus.Fields, len(args)/2)
