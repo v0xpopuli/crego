@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/v0xpopuli/crego/internal/recipe"
+	"github.com/v0xpopuli/crego/internal/tui"
 	"gopkg.in/yaml.v3"
 )
 
@@ -40,9 +41,14 @@ type (
 		json       bool
 		noComments bool
 	}
+
+	recipeEditOptions struct {
+		saveAs   string
+		readonly bool
+	}
 )
 
-func newRecipeCommand(out io.Writer, errOut io.Writer) *cobra.Command {
+func newRecipeCommand(out io.Writer, errOut io.Writer, globalOpts *globalOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "recipe",
 		Short: "Work with crego recipes",
@@ -53,12 +59,13 @@ settings so projects can be reproduced deterministically.`,
 		Example: `  crego recipe init
   crego recipe init --preset web-postgres --module github.com/example/orders
   crego recipe validate crego.yaml
-  crego recipe print crego.yaml --json`,
+  crego recipe print crego.yaml --json
+  crego recipe edit crego.yaml`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := cmd.Help(); err != nil {
 				return err
 			}
-			return fmt.Errorf("recipe requires a subcommand: init, validate, or print")
+			return fmt.Errorf("recipe requires a subcommand: init, validate, print, or edit")
 		},
 	}
 	cmd.SetOut(out)
@@ -67,6 +74,7 @@ settings so projects can be reproduced deterministically.`,
 		newRecipeInitCommand(out),
 		newRecipeValidateCommand(out),
 		newRecipePrintCommand(out),
+		newRecipeEditCommand(out, globalOpts),
 	)
 	return cmd
 }
@@ -238,6 +246,70 @@ func runRecipePrint(out io.Writer, opts *recipePrintOptions, recipePath string) 
 	}
 	_, err = out.Write(data)
 	return err
+}
+
+func newRecipeEditCommand(out io.Writer, globalOpts *globalOptions) *cobra.Command {
+	opts := &recipeEditOptions{}
+	cmd := &cobra.Command{
+		Use:   "edit [recipe]",
+		Short: "Edit an existing recipe interactively",
+		Long: `Edit an existing crego recipe with an interactive builder.
+
+The editor loads the recipe, lets you change supported stack choices, previews
+resolved components and files live, and saves only when the recipe is valid.`,
+		Example: `  crego recipe edit
+  crego recipe edit crego.yaml
+  crego recipe edit crego.yaml --save-as company-web.yaml
+  crego recipe edit crego.yaml --readonly`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			return runRecipeEdit(out, globalOpts, opts, recipePathArg(args))
+		},
+	}
+	cmd.SetOut(out)
+	cmd.Flags().StringVar(&opts.saveAs, "save-as", "", "Write edited recipe to a different path")
+	cmd.Flags().BoolVar(&opts.readonly, "readonly", false, "Preview and navigate without writing changes")
+	return cmd
+}
+
+func runRecipeEdit(out io.Writer, globalOpts *globalOptions, opts *recipeEditOptions, recipePath string) error {
+	if globalOpts == nil {
+		globalOpts = &globalOptions{}
+	}
+	if opts == nil {
+		opts = &recipeEditOptions{}
+	}
+
+	source, err := recipe.Load(recipePath)
+	if err != nil {
+		return err
+	}
+	savePath := recipePath
+	if opts.saveAs != "" {
+		savePath = opts.saveAs
+	}
+
+	state := tui.NewRecipeEditorState(source, tui.RecipeEditorOptions{
+		RecipePath: recipePath,
+		SavePath:   savePath,
+		ReadOnly:   opts.readonly,
+	})
+	app := tui.NewRecipeEditorApp(state, tui.AppOptions{
+		In:      os.Stdin,
+		Out:     out,
+		NoColor: globalOpts.NoColor,
+	})
+	if err := app.Run(); err != nil {
+		if errors.Is(err, tui.ErrCanceled) {
+			return nil
+		}
+		return err
+	}
+	if state.Saved() {
+		_, err := fmt.Fprintf(out, "saved recipe: %s\n", state.SavePath())
+		return err
+	}
+	return nil
 }
 
 func recipePathArg(args []string) string {
