@@ -15,7 +15,10 @@ func (s *CliTestSuite) TestGenerateCommand() {
 
 		s.Require().NoError(err)
 		s.Require().Equal(before, tempDirEntries(outDir))
-		s.Require().Contains(out, "planned files:")
+		s.Require().Contains(out, "Generation plan")
+		s.Require().Contains(out, "Files:")
+		s.Require().Contains(out, "Go modules:")
+		s.Require().Contains(out, "Hooks:")
 		s.Require().Contains(out, "cmd/orders-api/main.go")
 		s.Require().Contains(out, "internal/app/config.go")
 	})
@@ -29,6 +32,26 @@ func (s *CliTestSuite) TestGenerateCommand() {
 		s.Require().NoError(err)
 		s.Require().Contains(out, "cmd/orders-api/main.go")
 	})
+
+	s.Run("derives output directory and prints next steps", func() {
+		recipePath := s.writeGenerateRecipe()
+		workingDir := s.T().TempDir()
+		currentDir, err := os.Getwd()
+		s.Require().NoError(err)
+		s.Require().NoError(os.Chdir(workingDir))
+		s.T().Cleanup(func() {
+			s.Require().NoError(os.Chdir(currentDir))
+		})
+
+		out, _, err := s.executeCLI("generate", "--recipe", recipePath, "--skip-go-mod-tidy", "--skip-git-init")
+
+		s.Require().NoError(err)
+		s.Require().Contains(out, "Project generated successfully.")
+		s.Require().Contains(out, "cd orders-api")
+		s.Require().Contains(out, "make test")
+		s.Require().Contains(out, "make run")
+		s.Require().FileExists(filepath.Join(workingDir, "orders-api", "go.mod"))
+	})
 }
 
 func (s *CliTestSuite) writeGenerateRecipe() string {
@@ -38,7 +61,7 @@ func (s *CliTestSuite) writeGenerateRecipe() string {
 	err := os.WriteFile(path, []byte(`version: v1
 project:
   name: orders-api
-  module: github.com/acme/orders-api
+  module: github.com/example/orders-api
   type: web
 layout:
   style: minimal

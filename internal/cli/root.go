@@ -139,7 +139,6 @@ Generation, recipe schema, and component registry behavior will be added in late
 		newRecipeCommand(out, errOut),
 		newComponentsCommand(out),
 		newExplainCommand(out),
-		newDoctorCommand(out),
 		newVersionCommand(versionInfo, out),
 		newCompletionCommand(cmd, out),
 	)

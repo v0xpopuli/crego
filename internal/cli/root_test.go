@@ -28,7 +28,6 @@ func (s *CliTestSuite) TestRootCommand() {
 			"recipe",
 			"components",
 			"explain",
-			"doctor",
 			"version",
 			"completion",
 		} {
@@ -71,14 +70,14 @@ func (s *CliTestSuite) TestVersionCommand() {
 }
 
 func (s *CliTestSuite) TestPlaceholderCommands() {
-	s.Run("return clean not implemented error", func() {
+	s.Run("non-interactive new explains missing module", func() {
 		var out bytes.Buffer
 		var errOut bytes.Buffer
 		cmd := NewRootCommandWithWriters(VersionInfo{}, &out, &errOut)
-		cmd.SetArgs([]string{"new"})
+		cmd.SetArgs([]string{"new", "--non-interactive"})
 
 		err := cmd.Execute()
 
-		s.Require().EqualError(err, "command not implemented yet")
+		s.Require().EqualError(err, "module path is required for non-interactive new")
 	})
 }

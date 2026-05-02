@@ -21,7 +21,7 @@ func (s *RecipeTestSuite) TestLoadFullWebRecipe() {
 	path := s.writeRecipe(`version: "v1"
 project:
   name: orders-web
-  module: github.com/acme/orders-web
+  module: github.com/example/orders-web
   type: web
 go:
   version: "1.24"
@@ -71,7 +71,7 @@ func (s *RecipeTestSuite) TestLoadMinimalWebRecipeAppliesDefaults() {
 	path := s.writeRecipe(`version: v1
 project:
   name: orders-web
-  module: github.com/acme/orders-web
+  module: github.com/example/orders-web
   type: web
 `)
 
@@ -96,7 +96,7 @@ func (s *RecipeTestSuite) TestLoadInvalidEnumValue() {
 	path := s.writeRecipe(`version: v1
 project:
   name: orders-web
-  module: github.com/acme/orders-web
+  module: github.com/example/orders-web
   type: web
 server:
   framework: martini
@@ -113,7 +113,7 @@ func (s *RecipeTestSuite) TestLoadRejectsUnknownTaskScheduler() {
 	path := s.writeRecipe(`version: v1
 project:
   name: orders-web
-  module: github.com/acme/orders-web
+  module: github.com/example/orders-web
   type: web
 task_scheduler: quartz
 `)
@@ -129,7 +129,7 @@ func (s *RecipeTestSuite) TestLoadRejectsLoggingProviderField() {
 	path := s.writeRecipe(`version: v1
 project:
   name: orders-web
-  module: github.com/acme/orders-web
+  module: github.com/example/orders-web
   type: web
 logging:
   provider: slog
@@ -147,7 +147,7 @@ func (s *RecipeTestSuite) TestLoadAcceptsLoggingFrameworks() {
 			path := s.writeRecipe(`version: v1
 project:
   name: orders-web
-  module: github.com/acme/orders-web
+  module: github.com/example/orders-web
   type: web
 logging:
   framework: ` + framework + `
@@ -167,7 +167,7 @@ func (s *RecipeTestSuite) TestLoadAcceptsDatabaseDrivers() {
 			path := s.writeRecipe(`version: v1
 project:
   name: orders-web
-  module: github.com/acme/orders-web
+  module: github.com/example/orders-web
   type: web
 database:
   driver: ` + driver + `
@@ -185,7 +185,7 @@ func (s *RecipeTestSuite) TestLoadAcceptsMultipleDatabaseDrivers() {
 	path := s.writeRecipe(`version: v1
 project:
   name: orders-web
-  module: github.com/acme/orders-web
+  module: github.com/example/orders-web
   type: web
 database:
   sql: postgres
@@ -208,7 +208,7 @@ func (s *RecipeTestSuite) TestLoadAcceptsLegacyDatabaseRoot() {
 	path := s.writeRecipe(`version: v1
 project:
   name: orders-web
-  module: github.com/acme/orders-web
+  module: github.com/example/orders-web
   type: web
 database:
   driver: postgres
@@ -228,7 +228,7 @@ func (s *RecipeTestSuite) TestLoadAcceptsLegacyTopLevelDatabaseFields() {
 	path := s.writeRecipe(`version: v1
 project:
   name: orders-web
-  module: github.com/acme/orders-web
+  module: github.com/example/orders-web
   type: web
 sql_database: postgres
 orm_framework: sql
@@ -250,7 +250,7 @@ func (s *RecipeTestSuite) TestLoadCanonicalizesDatabaseSQLFramework() {
 	path := s.writeRecipe(`version: v1
 project:
   name: orders-web
-  module: github.com/acme/orders-web
+  module: github.com/example/orders-web
   type: web
 database:
   driver: postgres
@@ -280,7 +280,7 @@ func (s *RecipeTestSuite) TestLoadMigrationsWithoutDatabase() {
 	path := s.writeRecipe(`version: v1
 project:
   name: orders-web
-  module: github.com/acme/orders-web
+  module: github.com/example/orders-web
   type: web
 database:
   driver: none
@@ -297,7 +297,7 @@ func (s *RecipeTestSuite) TestLoadDatabaseFrameworkCompatibility() {
 	path := s.writeRecipe(`version: v1
 project:
   name: orders-web
-  module: github.com/acme/orders-web
+  module: github.com/example/orders-web
   type: web
 database:
   driver: mysql
@@ -314,7 +314,7 @@ func (s *RecipeTestSuite) TestLoadRejectsNoSQLFrameworkAndMigrations() {
 	path := s.writeRecipe(`version: v1
 project:
   name: orders-web
-  module: github.com/acme/orders-web
+  module: github.com/example/orders-web
   type: web
 database:
   driver: redis
@@ -333,7 +333,7 @@ func (s *RecipeTestSuite) TestLoadRejectsMultipleSQLDrivers() {
 	path := s.writeRecipe(`version: v1
 project:
   name: orders-web
-  module: github.com/acme/orders-web
+  module: github.com/example/orders-web
   type: web
 database:
   drivers:
@@ -351,7 +351,7 @@ func (s *RecipeTestSuite) TestLoadRejectsDatabaseCategoryMixups() {
 	path := s.writeRecipe(`version: v1
 project:
   name: orders-web
-  module: github.com/acme/orders-web
+  module: github.com/example/orders-web
   type: web
 database:
   sql: redis
@@ -390,7 +390,7 @@ func (s *RecipeTestSuite) TestSaveUsesSnakeCaseYAMLKeys() {
 		Version: VersionV1,
 		Project: ProjectConfig{
 			Name:   "orders-web",
-			Module: "github.com/acme/orders-web",
+			Module: "github.com/example/orders-web",
 			Type:   ProjectTypeWeb,
 		},
 		Logging: LoggingConfig{
@@ -433,7 +433,7 @@ func (s *RecipeTestSuite) TestSaveOmitsNoSQLFrameworkAndMigrations() {
 		Version: VersionV1,
 		Project: ProjectConfig{
 			Name:   "orders-web",
-			Module: "github.com/acme/orders-web",
+			Module: "github.com/example/orders-web",
 			Type:   ProjectTypeWeb,
 		},
 		Database: DatabaseConfig{

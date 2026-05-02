@@ -309,7 +309,7 @@ func (s *WebGeneratorTestSuite) TestGeneratesDatabaseMatrix() {
 			},
 			databaseFile: "internal/database/postgres.go",
 			expectedDatabase: []string{
-				`"github.com/acme/orders-api/internal/config"`,
+				`"github.com/example/orders-api/internal/config"`,
 				"cfg config.PostgresConfig",
 			},
 			absentDatabase: []string{
@@ -354,7 +354,7 @@ func (s *WebGeneratorTestSuite) TestGeneratesDatabaseMatrix() {
 			},
 			databaseFile: "internal/database/mysql.go",
 			expectedDatabase: []string{
-				`"github.com/acme/orders-api/internal/config"`,
+				`"github.com/example/orders-api/internal/config"`,
 				"cfg config.MySQLConfig",
 			},
 			absentDatabase: []string{
@@ -386,7 +386,7 @@ func (s *WebGeneratorTestSuite) TestGeneratesDatabaseMatrix() {
 			absentConfig:   []string{"Postgres PostgresConfig", "MySQL MySQLConfig", "SQLite SQLiteConfig", "database.RedisConfig"},
 			databaseFile:   "internal/database/redis.go",
 			expectedDatabase: []string{
-				`"github.com/acme/orders-api/internal/config"`,
+				`"github.com/example/orders-api/internal/config"`,
 				"cfg config.RedisConfig",
 			},
 			absentDatabase: []string{
@@ -419,7 +419,7 @@ func (s *WebGeneratorTestSuite) TestGeneratesDatabaseMatrix() {
 			absentConfig:   []string{"Postgres PostgresConfig", "MySQL MySQLConfig", "SQLite SQLiteConfig", "database.MongoDBConfig"},
 			databaseFile:   "internal/database/mongodb.go",
 			expectedDatabase: []string{
-				`"github.com/acme/orders-api/internal/config"`,
+				`"github.com/example/orders-api/internal/config"`,
 				"cfg config.MongoDBConfig",
 			},
 			absentDatabase: []string{
@@ -582,12 +582,12 @@ func (s *WebGeneratorTestSuite) TestGeneratesGocronScheduler() {
 	s.Require().Contains(schedulerGo, "gocron.CronJob(task.Cron(), cronHasSeconds(task.Cron()))")
 	s.Require().Contains(schedulerGo, "gocron.WithSingletonMode(gocron.LimitModeReschedule)")
 	s.Require().Contains(schedulerGo, "gocron.WithStartAt(gocron.WithStartImmediately())")
-	s.Require().Contains(schedulerGo, `"github.com/acme/orders-api/internal/config"`)
+	s.Require().Contains(schedulerGo, `"github.com/example/orders-api/internal/config"`)
 	s.Require().Contains(schedulerGo, "cfg config.TaskSchedulerConfig")
 	s.Require().NotContains(schedulerGo, "RuntimeConfig")
 
 	exampleCleanupGo := s.readGenerated(outDir, "internal/scheduler/tasks/example_cleanup.go")
-	s.Require().Contains(exampleCleanupGo, `"github.com/acme/orders-api/internal/config"`)
+	s.Require().Contains(exampleCleanupGo, `"github.com/example/orders-api/internal/config"`)
 	s.Require().Contains(exampleCleanupGo, "cfg config.ExampleCleanupTaskConfig")
 	s.Require().Contains(exampleCleanupGo, "t.config.Name")
 	s.Require().Contains(exampleCleanupGo, "t.config.Cron")
@@ -709,7 +709,7 @@ func webRecipe(layout string, server string, configFormat string, loggingFramewo
 		Version: recipe.VersionV1,
 		Project: recipe.ProjectConfig{
 			Name:   "orders-api",
-			Module: "github.com/acme/orders-api",
+			Module: "github.com/example/orders-api",
 			Type:   recipe.ProjectTypeWeb,
 		},
 		Go: recipe.GoConfig{

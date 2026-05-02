@@ -34,7 +34,7 @@ make build
 Create a starter recipe for a web project with PostgreSQL:
 
 ```bash
-crego recipe init --preset web-postgres --module github.com/acme/orders --out crego.yaml
+crego recipe init --preset web-postgres --module github.com/example/orders --out crego.yaml
 ```
 
 ### 2. Validate the recipe
