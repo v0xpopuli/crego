@@ -14,18 +14,27 @@ It is designed to be **interactive by default**, **deterministic by recipe**, an
 
 ## Installation
 
+### Go Install
+
 ```bash
 go install github.com/v0xpopuli/crego/cmd/crego@latest
 ```
 
-Or build from source:
+Ensure your Go bin directory is in your `PATH`:
+
+```bash
+export PATH=$PATH:$(go env GOPATH)/bin
+```
+
+### Build from Source
 
 ```bash
 git clone https://github.com/v0xpopuli/crego.git
 cd crego
 make build
-# Binary will be in ./build/app/crego
 ```
+
+The binary will be in `./build/app/crego`.
 
 ## Quick Start
 
