@@ -127,6 +127,7 @@ func NewRecipeEditorState(source *recipe.Recipe, opts RecipeEditorOptions) *Reci
 		Compose:             resolved.Deployment.Compose,
 		GitHubActions:       resolved.CI.GitHubActions,
 		GitLabCI:            resolved.CI.GitLabCI,
+		AzurePipelines:      resolved.CI.AzurePipelines,
 	}
 	state.applyDatabaseDefaults()
 	return state
@@ -730,13 +731,21 @@ func (s *recipeEditorScreen) sectionsView() string {
 				marker = "✓"
 			}
 
-			label := fmt.Sprintf("%s %s", marker, field.label)
+			value := field.current
+			if field.toggle {
+				if field.currentBool() {
+					value = "enabled"
+				} else {
+					value = "disabled"
+				}
+			}
+
+			label := fmt.Sprintf("%s %s: %s", marker, field.label, value)
 			if !field.enabled {
 				label = s.styles.Description.Render(label + " (inactive)")
 			} else if idx == s.cursor {
 				label = s.styles.Selected.Render(label)
 			}
-
 			lines = append(lines, "  "+label)
 		}
 	}
@@ -746,6 +755,9 @@ func (s *recipeEditorScreen) sectionsView() string {
 
 func (s *recipeEditorScreen) editorStatusLine() string {
 	mode := "clean"
+	if s.state.modified {
+		mode = "modified •"
+	}
 	if s.state.saved {
 		mode = "saved ✓"
 	}
@@ -843,6 +855,8 @@ func (s *recipeEditorScreen) changeCurrent(delta int) {
 
 func (s *recipeEditorScreen) setField(id string, value any) {
 	s.state.modified = true
+	s.state.saved = false
+
 	switch id {
 	case editorProjectType:
 		s.state.ProjectType = value.(string)
@@ -898,94 +912,6 @@ func (s *recipeEditorScreen) save() error {
 	return nil
 }
 
-func (s *recipeEditorScreen) columnsView() string {
-	left := s.recipeLines()
-	right := s.previewLines()
-	width := 38
-	lines := make([]string, 0, maxInt(len(left), len(right)))
-	count := maxInt(len(left), len(right))
-	for i := 0; i < count; i++ {
-		var leftLine, rightLine string
-		if i < len(left) {
-			leftLine = left[i]
-		}
-		if i < len(right) {
-			rightLine = right[i]
-		}
-		lines = append(lines, padRight(leftLine, width)+"  "+rightLine)
-	}
-	return strings.Join(lines, "\n")
-}
-
-func (s *recipeEditorScreen) recipeLines() []string {
-	fields := s.fields()
-	lines := []string{"Recipe"}
-	for i, field := range fields {
-		prefix := "  "
-		if i == s.cursor {
-			prefix = "> "
-		}
-		value := field.current
-		if !field.enabled {
-			value += " (inactive)"
-		}
-		line := fmt.Sprintf("%s%s: %s", prefix, field.label, value)
-		if i == s.cursor {
-			line = s.styles.Selected.Render(line)
-		}
-		lines = append(lines, line)
-	}
-	return lines
-}
-
-func (s *recipeEditorScreen) previewLines() []string {
-	r := s.state.Recipe()
-	lines := []string{"Preview"}
-	if err := recipe.Validate(r); err != nil {
-		lines = append(lines, "Validation errors:")
-		for _, problem := range recipeErrorLines(err) {
-			lines = append(lines, "  "+problem)
-		}
-		return lines
-	}
-
-	plan, err := generator.Resolve(component.NewRegistry(), r)
-	if err != nil {
-		lines = append(lines, "Plan errors:", "  "+err.Error())
-		return lines
-	}
-
-	lines = append(lines, "Components:")
-	for _, current := range plan.Components {
-		lines = append(lines, "  "+current.ID)
-	}
-	files, err := generator.RenderFileTargets(r, plan)
-	if err != nil {
-		lines = append(lines, "", "File target errors:", "  "+err.Error())
-		return lines
-	}
-	lines = append(lines, "", "Files:")
-	for _, file := range files {
-		lines = append(lines, "  "+file.Target)
-	}
-	return lines
-}
-
-func (s *recipeEditorScreen) description() string {
-	mode := fmt.Sprintf("Editing %s -> %s", s.state.RecipePath(), s.state.SavePath())
-	if s.state.options.ReadOnly {
-		mode += " (readonly)"
-	}
-	return mode
-}
-
-func (s *recipeEditorScreen) hint() string {
-	if s.state.options.ReadOnly {
-		return "up/down move • readonly preview only • q/esc cancel"
-	}
-	return "up/down move • left/right change • space toggle • s save • q/esc cancel"
-}
-
 func recipeErrorLines(err error) []string {
 	messages := strings.Split(err.Error(), "\n")
 	result := make([]string, 0, len(messages))
@@ -1025,18 +951,4 @@ func boolValue(value bool) string {
 		return "true"
 	}
 	return "false"
-}
-
-func padRight(value string, width int) string {
-	if len(value) >= width {
-		return value
-	}
-	return value + strings.Repeat(" ", width-len(value))
-}
-
-func maxInt(a int, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
