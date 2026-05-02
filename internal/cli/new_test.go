@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 )
@@ -68,7 +69,7 @@ func (s *CliTestSuite) TestNewCommand() {
 		recipePath := s.writeGenerateRecipe()
 		outDir := filepath.Join(s.T().TempDir(), "from-recipe")
 
-		out, _, err := s.executeCLI("new", "--recipe", recipePath, "--out", outDir, "--skip-go-mod-tidy", "--skip-git-init")
+		out, _, err := s.executeCLI("new", "--recipe", recipePath, "--out", outDir, "--skip-go-mod-tidy", "--skip-git-init", "--non-interactive")
 
 		s.Require().NoError(err)
 		s.Require().Contains(out, "Project generated successfully.")
@@ -81,10 +82,20 @@ func (s *CliTestSuite) TestNewCommand() {
 		s.Require().EqualError(err, "module path is required for non-interactive new")
 	})
 
-	s.Run("without non-interactive returns clear interactive message", func() {
-		_, _, err := s.executeCLI("new", "github.com/example/orders-web")
+	s.Run("has interactive starter flags", func() {
+		cmd := newNewCommand(io.Discard, &globalOptions{})
 
-		s.Require().EqualError(err, "interactive new is not implemented yet; pass --non-interactive with a module path for non-interactive generation")
+		s.Require().NotNil(cmd.Flags().Lookup("preset"))
+		s.Require().NotNil(cmd.Flags().Lookup("recipe"))
+		s.Require().NotNil(cmd.Flags().Lookup("overwrite"))
+		s.Require().Contains(cmd.Long, "opens the TUI wizard")
+	})
+
+	s.Run("preset builds interactive base recipe", func() {
+		r, err := newBaseRecipe(&newOptions{preset: "web-postgres"})
+
+		s.Require().NoError(err)
+		s.Require().Equal("postgres", r.Database.Driver)
 	})
 
 	s.Run("invalid database framework combination returns validation error", func() {

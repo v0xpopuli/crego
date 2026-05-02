@@ -133,7 +133,7 @@ Generation, recipe schema, and component registry behavior will be added in late
 	cmd.PersistentFlags().StringVar(&opts.Config, "config", "", "Path to a crego recipe or configuration file")
 
 	cmd.AddCommand(
-		newNewCommand(out),
+		newNewCommand(out, opts),
 		newConfigureCommand(out, opts),
 		newGenerateCommand(out, opts),
 		newRecipeCommand(out, errOut),
