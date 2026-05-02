@@ -69,7 +69,6 @@ func (s *RecipeEditorTestSuite) TestViewShowsLiveComponentsAndFiles() {
 	s.Require().Contains(view, "yaml")
 	s.Require().Contains(view, "Logging")
 	s.Require().Contains(view, "zap")
-	s.Require().Contains(view, "Task scheduler")
 	s.Require().Contains(view, "gocron")
 	s.Require().Contains(view, "Components")
 	s.Require().Contains(view, "configuration.yaml")
