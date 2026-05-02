@@ -17,9 +17,13 @@ import (
 
 type (
 	ConfigureWizardOptions struct {
-		RecipePath string
-		Minimal    bool
-		Overwrite  bool
+		RecipePath    string
+		OutputDir     string
+		Minimal       bool
+		Overwrite     bool
+		Force         bool
+		SkipGoModTidy bool
+		Mode          ConfigureWizardMode
 	}
 
 	ConfigureWizardState struct {
@@ -45,7 +49,9 @@ type (
 		GitLabCI            bool
 		AzurePipelines      bool
 
-		saved bool
+		Action         ConfigureWizardAction
+		ForceOverwrite bool
+		saved          bool
 	}
 
 	configureScreen struct {
@@ -62,9 +68,20 @@ type (
 	}
 
 	configureStep int
+
+	ConfigureWizardMode string
+
+	ConfigureWizardAction string
 )
 
 const (
+	ConfigureWizardModeRecipe     ConfigureWizardMode = "recipe"
+	ConfigureWizardModeGeneration ConfigureWizardMode = "generation"
+
+	ConfigureWizardActionNone     ConfigureWizardAction = ""
+	ConfigureWizardActionGenerate ConfigureWizardAction = "generate"
+	ConfigureWizardActionSave     ConfigureWizardAction = "save"
+
 	stepWelcome configureStep = iota
 	stepProjectIdentity
 	stepGoVersion
@@ -87,6 +104,9 @@ const (
 func NewConfigureWizardState(source *recipe.Recipe, opts ConfigureWizardOptions) *ConfigureWizardState {
 	if opts.RecipePath == "" {
 		opts.RecipePath = "crego.yaml"
+	}
+	if opts.Mode == "" {
+		opts.Mode = ConfigureWizardModeRecipe
 	}
 	if source == nil {
 		source, _ = recipe.NewPreset(recipe.PresetWebBasic)
@@ -144,6 +164,29 @@ func (s *ConfigureWizardState) RecipePath() string {
 
 func (s *ConfigureWizardState) Saved() bool {
 	return s.saved
+}
+
+func (s *ConfigureWizardState) OutputDirectory() string {
+	if s == nil {
+		return "."
+	}
+	if strings.TrimSpace(s.options.OutputDir) != "" {
+		return strings.TrimSpace(s.options.OutputDir)
+	}
+	r := s.Recipe()
+	if strings.TrimSpace(r.Project.Name) != "" {
+		return strings.TrimSpace(r.Project.Name)
+	}
+	module := strings.TrimSuffix(strings.TrimSpace(r.Project.Module), "/")
+	if module == "" {
+		return "."
+	}
+	parts := strings.Split(module, "/")
+	name := strings.TrimSpace(parts[len(parts)-1])
+	if name == "" || name == "." {
+		return "."
+	}
+	return name
 }
 
 func (s *ConfigureWizardState) Recipe() *recipe.Recipe {
@@ -221,8 +264,7 @@ func newConfigureScreen(styles Styles, state *ConfigureWizardState, step configu
 		state:  state,
 		step:   step,
 	}
-	screen.configureInputs()
-	return screen
+	return screen.configureInputs()
 }
 
 func (s configureScreen) Init() tea.Cmd {
@@ -324,6 +366,21 @@ func (s configureScreen) updateSelect(key tea.KeyMsg, msg tea.Msg) (screens.Scre
 		if value == "cancel" {
 			return s, func() tea.Msg { return Cancel() }
 		}
+		if s.state.options.Mode == ConfigureWizardModeGeneration {
+			switch value {
+			case "generate", "generate_overwrite":
+				s.state.Action = ConfigureWizardActionGenerate
+				s.state.ForceOverwrite = value == "generate_overwrite"
+				return s, tea.Quit
+			case "save":
+				if err := s.saveRecipe(false); err != nil {
+					s.err = err
+					return s, nil
+				}
+				s.state.Action = ConfigureWizardActionSave
+				return s, tea.Quit
+			}
+		}
 	case stepSave:
 		switch value {
 		case "save", "overwrite":
@@ -418,7 +475,7 @@ func (s configureScreen) previousScreen() configureScreen {
 	return newConfigureScreen(s.styles, s.state, previousConfigureStep(s.step, s.state))
 }
 
-func (s *configureScreen) applyDatabaseDefaults() {
+func (s configureScreen) applyDatabaseDefaults() {
 	switch s.state.Database {
 	case recipe.DatabaseDriverPostgres:
 		if !contains(compatibleFrameworks(s.state.Database), s.state.DatabaseFramework) {
@@ -459,10 +516,14 @@ func (s configureScreen) saveRecipe(confirmedOverwrite bool) error {
 
 func (s configureScreen) preview() string {
 	r := s.state.Recipe()
+	hasGoMod := false
 	var builder strings.Builder
 	builder.WriteString("Project:\n")
 	builder.WriteString(fmt.Sprintf("  name: %s\n", r.Project.Name))
 	builder.WriteString(fmt.Sprintf("  module: %s\n", r.Project.Module))
+	if s.state.options.Mode == ConfigureWizardModeGeneration {
+		builder.WriteString(fmt.Sprintf("  output directory: %s\n", s.state.OutputDirectory()))
+	}
 	builder.WriteString(fmt.Sprintf("  type: %s\n\n", r.Project.Type))
 
 	builder.WriteString("Selected stack:\n")
@@ -487,11 +548,24 @@ func (s configureScreen) preview() string {
 		for _, current := range plan.Components {
 			builder.WriteString("  - " + current.ID + "\n")
 		}
-		builder.WriteString("\nFiles planned:\n")
+		builder.WriteString("\nFiles:\n")
 		for _, file := range plan.Files {
+			if file.Target == "go.mod" {
+				hasGoMod = true
+			}
 			builder.WriteString("  - " + file.Target + "\n")
 		}
 		builder.WriteString("\n")
+	}
+
+	if s.state.options.Mode == ConfigureWizardModeGeneration {
+		builder.WriteString("Actions:\n")
+		builder.WriteString("  - write files\n")
+		if !s.state.options.SkipGoModTidy && hasGoMod {
+			builder.WriteString("  - run go mod tidy\n")
+		}
+		builder.WriteString("\n")
+		return builder.String()
 	}
 
 	data, err := recipe.MarshalYAML(r)
@@ -504,11 +578,15 @@ func (s configureScreen) preview() string {
 	return builder.String()
 }
 
-func (s *configureScreen) configureInputs() {
+func (s configureScreen) configureInputs() configureScreen {
 	switch s.step {
 	case stepWelcome:
+		startLabel := "Start configure wizard"
+		if s.state.options.Mode == ConfigureWizardModeGeneration {
+			startLabel = "Start new project wizard"
+		}
 		s.selectInput = selectWithCurrent("", []components.SelectOption{
-			{Label: "Start configure wizard", Value: "start"},
+			{Label: startLabel, Value: "start"},
 			{Label: "Cancel", Value: "cancel"},
 		}, "start")
 	case stepProjectIdentity:
@@ -597,11 +675,24 @@ func (s *configureScreen) configureInputs() {
 			{Label: "Azure Pipelines", Value: "azure_pipelines"},
 		}, map[string]bool{"github_actions": s.state.GitHubActions, "gitlab_ci": s.state.GitLabCI, "azure_pipelines": s.state.AzurePipelines})
 	case stepPreview:
-		s.selectInput = selectWithCurrent("", []components.SelectOption{
+		options := []components.SelectOption{
 			{Label: "Continue to save", Value: "continue"},
 			{Label: "Back", Value: "back"},
 			{Label: "Cancel", Value: "cancel"},
-		}, "continue")
+		}
+		if s.state.options.Mode == ConfigureWizardModeGeneration {
+			generate := components.SelectOption{Label: "Generate project", Value: "generate"}
+			if !s.state.options.Force && outputDirectoryHasEntries(s.state.OutputDirectory()) {
+				generate = components.SelectOption{Label: "Generate project and overwrite non-empty output directory", Value: "generate_overwrite"}
+			}
+			options = []components.SelectOption{
+				generate,
+				{Label: "Save recipe only", Value: "save"},
+				{Label: "Back", Value: "back"},
+				{Label: "Cancel", Value: "cancel"},
+			}
+		}
+		s.selectInput = selectWithCurrent("", options, options[0].Value)
 	case stepSave:
 		options := []components.SelectOption{
 			{Label: "Save recipe", Value: "save"},
@@ -617,11 +708,15 @@ func (s *configureScreen) configureInputs() {
 		}
 		s.selectInput = selectWithCurrent("", options, options[0].Value)
 	}
+	return s
 }
 
 func (s configureScreen) title() string {
 	switch s.step {
 	case stepWelcome:
+		if s.state.options.Mode == ConfigureWizardModeGeneration {
+			return "crego new"
+		}
 		return "crego configure"
 	case stepProjectIdentity:
 		return "Project identity"
@@ -637,12 +732,18 @@ func (s configureScreen) title() string {
 func (s configureScreen) description() string {
 	switch s.step {
 	case stepWelcome:
+		if s.state.options.Mode == ConfigureWizardModeGeneration {
+			return "Create a Go project from guided choices."
+		}
 		return "Build a reusable crego.yaml from practical project choices."
 	case stepProjectIdentity:
 		return "Enter a safe project name and Go module path. Tab switches fields."
 	case stepDatabaseFramework:
 		return "Only frameworks compatible with the selected SQL database are shown."
 	case stepPreview:
+		if s.state.options.Mode == ConfigureWizardModeGeneration {
+			return "Review the resolved generation plan before writing files."
+		}
 		return "Review normalized recipe YAML and the resolved generation plan before writing files."
 	case stepSave:
 		return fmt.Sprintf("Recipe path: %s", s.state.options.RecipePath)
@@ -836,4 +937,9 @@ func joinEnabled(labels ...enabledLabel) string {
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil || !errors.Is(err, os.ErrNotExist)
+}
+
+func outputDirectoryHasEntries(path string) bool {
+	entries, err := os.ReadDir(path)
+	return err == nil && len(entries) > 0
 }

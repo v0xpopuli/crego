@@ -6,7 +6,7 @@ It is designed to be **interactive by default**, **deterministic by recipe**, an
 
 ## Features
 
-- **TUI Flow**: Interactive project setup with sensible defaults (Coming Soon).
+- **TUI Flow**: Interactive project setup with sensible defaults.
 - **Deterministic Recipes**: Define your project once, generate it many times with predictable results.
 - **Component Registry**: Pick and choose components (server, database, logger, etc.) and let `crego` handle the wiring.
 - **Dry-run & Explain**: See what will be generated before touching the disk.
@@ -82,7 +82,7 @@ Components are the building blocks of your project. They can be servers, databas
 
 ## Command Reference
 
-- `crego new`: Interactive project setup (Coming Soon).
+- `crego new`: Interactive project setup and immediate project generation.
 - `crego generate`: Generate a project from a recipe.
 - `crego explain`: Print a generation plan for a recipe without writing files.
 - `crego recipe init`: Create a starter recipe file.

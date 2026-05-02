@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -53,6 +55,60 @@ func (s *ConfigureWizardTestSuite) TestRecipeBuildsFullWebMatrix() {
 	s.Require().True(r.CI.GitHubActions)
 	s.Require().True(r.CI.GitLabCI)
 	s.Require().True(r.CI.AzurePipelines)
+}
+
+func (s *ConfigureWizardTestSuite) TestGenerationModePrefillsModuleAndOutputPreview() {
+	source, err := recipe.NewPreset(recipe.PresetWebPostgres)
+	s.Require().NoError(err)
+	source.Project.Module = "github.com/acme/orders-web"
+	source.Project.Name = "orders-web"
+	source.TaskScheduler = recipe.TaskSchedulerGocron
+
+	state := NewConfigureWizardState(source, ConfigureWizardOptions{
+		OutputDir:     "custom-orders",
+		SkipGoModTidy: false,
+		Mode:          ConfigureWizardModeGeneration,
+	})
+	screen := newConfigureScreen(NewStyles(nil, true), state, stepPreview)
+
+	view := screen.preview()
+
+	s.Require().Contains(view, "module: github.com/acme/orders-web")
+	s.Require().Contains(view, "name: orders-web")
+	s.Require().Contains(view, "output directory: custom-orders")
+	s.Require().Contains(view, "task_scheduler: gocron")
+	s.Require().Contains(view, "Components:")
+	s.Require().Contains(view, "Files:")
+	s.Require().Contains(view, "Actions:")
+	s.Require().Contains(view, "write files")
+	s.Require().Contains(view, "run go mod tidy")
+	s.Require().NotContains(view, "Normalized recipe:")
+}
+
+func (s *ConfigureWizardTestSuite) TestGenerationPreviewActions() {
+	state := NewConfigureWizardState(nil, ConfigureWizardOptions{Mode: ConfigureWizardModeGeneration})
+	screen := newConfigureScreen(NewStyles(nil, true), state, stepPreview)
+
+	s.Require().Equal([]components.SelectOption{
+		{Label: "Generate project", Value: "generate"},
+		{Label: "Save recipe only", Value: "save"},
+		{Label: "Back", Value: "back"},
+		{Label: "Cancel", Value: "cancel"},
+	}, screen.selectInput.Options)
+}
+
+func (s *ConfigureWizardTestSuite) TestGenerationPreviewConfirmsNonEmptyOutputDirectory() {
+	outDir := s.T().TempDir()
+	s.Require().NoError(os.WriteFile(filepath.Join(outDir, "existing.txt"), []byte("existing"), 0o644))
+
+	state := NewConfigureWizardState(nil, ConfigureWizardOptions{
+		OutputDir: outDir,
+		Mode:      ConfigureWizardModeGeneration,
+	})
+	screen := newConfigureScreen(NewStyles(nil, true), state, stepPreview)
+
+	s.Require().Equal("Generate project and overwrite non-empty output directory", screen.selectInput.Options[0].Label)
+	s.Require().Equal("generate_overwrite", screen.selectInput.Options[0].Value)
 }
 
 func (s *ConfigureWizardTestSuite) TestLayoutViewShowsTreeExamplesBelowOptions() {
