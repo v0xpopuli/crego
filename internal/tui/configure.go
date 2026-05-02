@@ -598,12 +598,8 @@ func (s configureScreen) preview() string {
 		return builder.String()
 	}
 
-	data, err := recipe.MarshalYAML(r)
-	if err != nil {
+	if _, err := recipe.MarshalYAML(r); err != nil {
 		builder.WriteString("Recipe YAML error: " + err.Error() + "\n")
-	} else {
-		builder.WriteString("Normalized recipe:\n")
-		builder.Write(data)
 	}
 	return builder.String()
 }
