@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/v0xpopuli/crego/internal/generator"
 	"github.com/v0xpopuli/crego/internal/recipe"
+	"github.com/v0xpopuli/crego/internal/tui"
 )
 
 type generateOptions struct {
@@ -102,14 +103,87 @@ func moduleBasename(module string) string {
 }
 
 func writeSuccess(out io.Writer, outDir string) error {
+	return writeSuccessSummary(out, generationSummary{
+		GenerationSummary: tui.GenerationSummary{OutputDir: outDir},
+	})
+}
+
+func writeSuccessSummary(out io.Writer, summary generationSummary) error {
+	files := "unknown"
+	if summary.FileCount > 0 {
+		files = fmt.Sprintf("%d", summary.FileCount)
+	}
+	stack := summary.Stack
+	if stack == "" {
+		stack = "unknown"
+	}
+	elapsed := "unknown"
+	if summary.Elapsed > 0 {
+		elapsed = fmt.Sprintf("%.1fs", summary.Elapsed.Seconds())
+	}
+
 	_, err := fmt.Fprintf(out, `Project generated successfully.
+
+Created: %s
+Files:   %s
+Stack:   %s
+Time:    %s
 
 Next steps:
   cd %s
   make test
   make run
-`, outDir)
+`, summary.OutputDir, files, stack, elapsed, summary.OutputDir)
 	return err
+}
+
+func recipeStackSummary(r *recipe.Recipe) string {
+	if r == nil {
+		return ""
+	}
+	values := make([]string, 0, 10)
+	appendIf := func(value string) {
+		value = strings.TrimSpace(value)
+		if value != "" && value != recipe.DatabaseDriverNone && value != recipe.DatabaseFrameworkNone && value != recipe.DatabaseMigrationsNone && value != recipe.TaskSchedulerNone {
+			values = append(values, value)
+		}
+	}
+	appendIf(r.Project.Type)
+	appendIf(r.Layout.Style)
+	if r.Go.Version != "" {
+		appendIf("Go " + r.Go.Version)
+	}
+	if r.Project.Type == recipe.ProjectTypeWeb {
+		appendIf(r.Server.Framework)
+	}
+	appendIf(r.Configuration.Format)
+	appendIf(r.Logging.Framework)
+	drivers := recipe.DatabaseDrivers(r.Database)
+	if len(drivers) > 0 {
+		if r.Database.Framework != "" && r.Database.Framework != recipe.DatabaseFrameworkNone {
+			appendIf(drivers[0] + "/" + r.Database.Framework)
+		} else {
+			appendIf(drivers[0])
+		}
+	}
+	appendIf(r.Database.Migrations)
+	appendIf(r.TaskScheduler)
+	if r.Deployment.Docker {
+		appendIf("docker")
+	}
+	if r.Deployment.Compose {
+		appendIf("compose")
+	}
+	if r.CI.GitHubActions {
+		appendIf("github actions")
+	}
+	if r.CI.GitLabCI {
+		appendIf("gitlab ci")
+	}
+	if r.CI.AzurePipelines {
+		appendIf("azure pipelines")
+	}
+	return strings.Join(values, " · ")
 }
 
 func writeGenerationPlan(out io.Writer, plan *generator.Plan, result *generator.Result) error {

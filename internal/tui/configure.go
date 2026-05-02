@@ -65,6 +65,8 @@ type (
 		moduleInput textinput.Model
 		focus       int
 		err         error
+		width       int
+		height      int
 	}
 
 	configureStep int
@@ -78,7 +80,6 @@ const (
 	ConfigureWizardModeRecipe     ConfigureWizardMode = "recipe"
 	ConfigureWizardModeGeneration ConfigureWizardMode = "generation"
 
-	ConfigureWizardActionNone     ConfigureWizardAction = ""
 	ConfigureWizardActionGenerate ConfigureWizardAction = "generate"
 	ConfigureWizardActionSave     ConfigureWizardAction = "save"
 
@@ -275,6 +276,11 @@ func (s configureScreen) Init() tea.Cmd {
 }
 
 func (s configureScreen) Update(msg tea.Msg) (screens.Screen, tea.Cmd) {
+	if size, ok := msg.(tea.WindowSizeMsg); ok {
+		s.width = size.Width
+		s.height = size.Height
+		return s, nil
+	}
 	if key, ok := msg.(tea.KeyMsg); ok {
 		switch s.step {
 		case stepProjectIdentity:
@@ -292,39 +298,54 @@ func (s configureScreen) Update(msg tea.Msg) (screens.Screen, tea.Cmd) {
 }
 
 func (s configureScreen) View() string {
-	parts := []string{}
-	if title := s.title(); title != "" {
-		parts = append(parts, s.styles.Title.Render(title))
-	}
+	var bodyParts []string
 	if description := s.description(); description != "" {
-		parts = append(parts, s.styles.Description.Render(description))
+		bodyParts = append(bodyParts, s.styles.Description.Render(description))
 	}
-	if s.err != nil {
-		parts = append(parts, components.ErrorPanel(s.styles.Components(), s.err))
-	}
-
 	switch s.step {
 	case stepProjectIdentity:
-		parts = append(parts, s.identityView())
+		bodyParts = append(bodyParts, s.identityView())
 	case stepLayout:
-		parts = append(parts, s.selectInput.View(s.styles.Components()))
-		parts = append(parts, components.Preview(s.styles.Components(), layoutTreeExamples()))
+		bodyParts = append(bodyParts, s.selectInput.View(s.styles.Components()))
+		bodyParts = append(bodyParts, components.Preview(s.styles.Components(), s.layoutPreview()))
 	case stepPreview:
-		parts = append(parts, components.Preview(s.styles.Components(), s.preview()))
+		bodyParts = append(bodyParts, s.preview())
 	case stepDeployment, stepCI, stepObservability:
-		parts = append(parts, s.multiInput.View(s.styles.Components()))
+		bodyParts = append(bodyParts, s.multiInput.View(s.styles.Components()))
 	default:
-		parts = append(parts, s.selectInput.View(s.styles.Components()))
-	}
-	if hint := s.hint(); hint != "" {
-		parts = append(parts, s.styles.Footer.Render(hint))
+		bodyParts = append(bodyParts, s.selectInput.View(s.styles.Components()))
 	}
 
-	return strings.Join(parts, "\n\n")
+	errorPanel := ""
+	if s.err != nil {
+		errorPanel = components.ErrorPanel(s.styles.Components(), s.err)
+	}
+	step, total := s.progress()
+	return RenderShell(s.styles, LayoutProps{
+		Title:      s.title(),
+		Subtitle:   s.stepTitle(),
+		Step:       step,
+		TotalSteps: total,
+		Sidebar:    s.sidebar(),
+		Body:       strings.Join(bodyParts, "\n\n"),
+		Preview:    s.livePreview(),
+		StackLine:  s.stackLine(),
+		Help:       s.hint(),
+		Error:      errorPanel,
+		Width:      s.width,
+		Height:     s.height,
+	})
+}
+
+func (s configureScreen) UsesShellLayout() bool {
+	return true
 }
 
 func (s configureScreen) updateSelect(key tea.KeyMsg, msg tea.Msg) (screens.Screen, tea.Cmd) {
 	if isConfigureBackKey(key) {
+		if s.step == stepWelcome {
+			return s, func() tea.Msg { return Cancel() }
+		}
 		return s.previousScreen(), nil
 	}
 	if key.String() != "enter" {
@@ -426,7 +447,7 @@ func (s configureScreen) updateMultiSelect(key tea.KeyMsg, msg tea.Msg) (screens
 
 func (s configureScreen) updateIdentity(key tea.KeyMsg, msg tea.Msg) (screens.Screen, tea.Cmd) {
 	switch key.String() {
-	case "ctrl+b":
+	case "ctrl+b", "esc":
 		return s.previousScreen(), nil
 	case "tab", "shift+tab", "up", "down":
 		if s.focus == 0 {
@@ -468,11 +489,17 @@ func (s configureScreen) updateTextFocus(cmd tea.Cmd) (screens.Screen, tea.Cmd) 
 }
 
 func (s configureScreen) nextScreen() configureScreen {
-	return newConfigureScreen(s.styles, s.state, nextConfigureStep(s.step, s.state))
+	next := newConfigureScreen(s.styles, s.state, nextConfigureStep(s.step, s.state))
+	next.width = s.width
+	next.height = s.height
+	return next
 }
 
 func (s configureScreen) previousScreen() configureScreen {
-	return newConfigureScreen(s.styles, s.state, previousConfigureStep(s.step, s.state))
+	previous := newConfigureScreen(s.styles, s.state, previousConfigureStep(s.step, s.state))
+	previous.width = s.width
+	previous.height = s.height
+	return previous
 }
 
 func (s configureScreen) applyDatabaseDefaults() {
@@ -548,12 +575,15 @@ func (s configureScreen) preview() string {
 		for _, current := range plan.Components {
 			builder.WriteString("  - " + current.ID + "\n")
 		}
-		builder.WriteString("\nFiles:\n")
-		for _, file := range plan.Files {
+		files, err := generator.RenderFileTargets(r, plan)
+		if err != nil {
+			builder.WriteString("\nFiles:\n")
+			builder.WriteString("  " + err.Error() + "\n")
+		}
+		for _, file := range files {
 			if file.Target == "go.mod" {
 				hasGoMod = true
 			}
-			builder.WriteString("  - " + file.Target + "\n")
 		}
 		builder.WriteString("\n")
 	}
@@ -600,79 +630,79 @@ func (s configureScreen) configureInputs() configureScreen {
 		s.moduleInput.CharLimit = 180
 	case stepProjectType:
 		s.selectInput = selectWithCurrent("Project type", []components.SelectOption{
-			{Label: "Web service", Value: recipe.ProjectTypeWeb},
-			{Label: "CLI application", Value: recipe.ProjectTypeCLI},
+			{Label: "Web service", Value: recipe.ProjectTypeWeb, Description: "HTTP API/application scaffold"},
+			{Label: "CLI application", Value: recipe.ProjectTypeCLI, Description: "Command-line app scaffold"},
 		}, s.state.ProjectType)
 	case stepGoVersion:
 		s.selectInput = selectWithCurrent("Go version", []components.SelectOption{
-			{Label: "Go 1.26", Value: "1.26"},
-			{Label: "Go 1.25", Value: "1.25"},
-			{Label: "Go 1.24", Value: "1.24"},
+			{Label: "Go 1.26", Value: "1.26", Description: "Latest toolchain target"},
+			{Label: "Go 1.25", Value: "1.25", Description: "Stable modern runtime"},
+			{Label: "Go 1.24", Value: "1.24", Description: "Conservative compatibility"},
 		}, s.state.GoVersion)
 	case stepLayout:
 		s.selectInput = selectWithCurrent("Layout style", []components.SelectOption{
-			{Label: "Minimal", Value: recipe.LayoutStyleMinimal},
-			{Label: "Layered", Value: recipe.LayoutStyleLayered},
+			{Label: "Minimal", Value: recipe.LayoutStyleMinimal, Description: "Small apps, fewer packages"},
+			{Label: "Layered", Value: recipe.LayoutStyleLayered, Description: "Config, handlers, services, repositories"},
 		}, s.state.Layout)
 	case stepServer:
 		s.selectInput = selectWithCurrent("Server provider", []components.SelectOption{
-			{Label: "net/http", Value: recipe.ServerFrameworkNetHTTP},
-			{Label: "chi", Value: recipe.ServerFrameworkChi},
-			{Label: "gin", Value: recipe.ServerFrameworkGin},
-			{Label: "echo", Value: recipe.ServerFrameworkEcho},
-			{Label: "fiber", Value: recipe.ServerFrameworkFiber},
+			{Label: "net/http", Value: recipe.ServerFrameworkNetHTTP, Description: "Standard library, zero external router"},
+			{Label: "chi", Value: recipe.ServerFrameworkChi, Description: "Lightweight router, clean APIs"},
+			{Label: "gin", Value: recipe.ServerFrameworkGin, Description: "Popular web framework"},
+			{Label: "echo", Value: recipe.ServerFrameworkEcho, Description: "Minimal framework with middleware"},
+			{Label: "fiber", Value: recipe.ServerFrameworkFiber, Description: "Express-like API, fasthttp-based"},
 		}, s.state.Server)
 	case stepConfiguration:
 		s.selectInput = selectWithCurrent("Configuration format", []components.SelectOption{
-			{Label: "ENV", Value: recipe.ConfigurationFormatEnv},
-			{Label: "YAML", Value: recipe.ConfigurationFormatYAML},
-			{Label: "JSON", Value: recipe.ConfigurationFormatJSON},
-			{Label: "TOML", Value: recipe.ConfigurationFormatTOML},
+			{Label: "ENV", Value: recipe.ConfigurationFormatEnv, Description: "Environment variables only"},
+			{Label: "YAML", Value: recipe.ConfigurationFormatYAML, Description: "Human-friendly config files"},
+			{Label: "JSON", Value: recipe.ConfigurationFormatJSON, Description: "Machine-friendly config files"},
+			{Label: "TOML", Value: recipe.ConfigurationFormatTOML, Description: "Compact structured config"},
 		}, s.state.ConfigurationFormat)
 	case stepLogging:
 		s.selectInput = selectWithCurrent("Logging provider", []components.SelectOption{
-			{Label: "slog", Value: recipe.LoggingFrameworkSlog},
-			{Label: "zap", Value: recipe.LoggingFrameworkZap},
-			{Label: "zerolog", Value: recipe.LoggingFrameworkZerolog},
-			{Label: "logrus", Value: recipe.LoggingFrameworkLogrus},
+			{Label: "slog", Value: recipe.LoggingFrameworkSlog, Description: "Standard library, simple and stable"},
+			{Label: "zap", Value: recipe.LoggingFrameworkZap, Description: "High-performance structured logging"},
+			{Label: "zerolog", Value: recipe.LoggingFrameworkZerolog, Description: "Minimal allocations, JSON-first"},
+			{Label: "logrus", Value: recipe.LoggingFrameworkLogrus, Description: "Mature, widely known"},
 		}, s.state.Logging)
 	case stepDatabase:
 		s.selectInput = selectWithCurrent("Database driver", []components.SelectOption{
-			{Label: "None", Value: recipe.DatabaseDriverNone},
-			{Label: "PostgreSQL", Value: recipe.DatabaseDriverPostgres},
-			{Label: "MySQL", Value: recipe.DatabaseDriverMySQL},
-			{Label: "SQLite", Value: recipe.DatabaseDriverSQLite},
-			{Label: "Redis", Value: recipe.DatabaseDriverRedis},
-			{Label: "MongoDB", Value: recipe.DatabaseDriverMongoDB},
+			{Label: "None", Value: recipe.DatabaseDriverNone, Description: "No database integration"},
+			{Label: "PostgreSQL", Value: recipe.DatabaseDriverPostgres, Description: "SQL database, production default"},
+			{Label: "MySQL", Value: recipe.DatabaseDriverMySQL, Description: "SQL database, common web stack"},
+			{Label: "SQLite", Value: recipe.DatabaseDriverSQLite, Description: "Local/file database"},
+			{Label: "Redis", Value: recipe.DatabaseDriverRedis, Description: "NoSQL key-value database"},
+			{Label: "MongoDB", Value: recipe.DatabaseDriverMongoDB, Description: "NoSQL document database"},
 		}, s.state.Database)
 	case stepDatabaseFramework:
 		s.selectInput = selectWithCurrent("Database framework", frameworkOptions(s.state.Database), s.state.DatabaseFramework)
 	case stepMigrations:
 		s.selectInput = selectWithCurrent("Migration tool", []components.SelectOption{
-			{Label: "None", Value: recipe.DatabaseMigrationsNone},
-			{Label: "goose", Value: recipe.DatabaseMigrationsGoose},
-			{Label: "migrate", Value: recipe.DatabaseMigrationsMigrate},
+			{Label: "None", Value: recipe.DatabaseMigrationsNone, Description: "Manage schema outside crego"},
+			{Label: "goose", Value: recipe.DatabaseMigrationsGoose, Description: "SQL migrations with Go-friendly tooling"},
+			{Label: "migrate", Value: recipe.DatabaseMigrationsMigrate, Description: "Broad database migration CLI"},
 		}, s.state.Migrations)
 	case stepObservability:
 		s.multiInput = multiWithCurrent("Observability", []components.SelectOption{
-			{Label: "Health endpoint", Value: "health"},
-			{Label: "Readiness endpoint", Value: "readiness"},
+			{Label: "Health endpoint", Value: "health", Description: "/healthz for basic liveness"},
+			{Label: "Readiness endpoint", Value: "readiness", Description: "/readyz for dependency readiness"},
 		}, map[string]bool{"health": s.state.Health, "readiness": s.state.Readiness})
 	case stepTaskScheduler:
 		s.selectInput = selectWithCurrent("Task scheduler", []components.SelectOption{
-			{Label: "None", Value: recipe.TaskSchedulerNone},
-			{Label: "gocron", Value: recipe.TaskSchedulerGocron},
+			{Label: "None", Value: recipe.TaskSchedulerNone, Description: "No background scheduler"},
+			{Label: "gocron", Value: recipe.TaskSchedulerGocron, Description: "In-process scheduled jobs"},
 		}, s.state.TaskScheduler)
 	case stepDeployment:
 		s.multiInput = multiWithCurrent("Deployment", []components.SelectOption{
-			{Label: "Dockerfile", Value: "docker"},
-			{Label: "Docker Compose", Value: "compose"},
+			{Label: "Dockerfile", Value: "docker", Description: "Container image build file"},
+			{Label: "Docker Compose", Value: "compose", Description: "Local service orchestration"},
 		}, map[string]bool{"docker": s.state.Docker, "compose": s.state.Compose})
 	case stepCI:
 		s.multiInput = multiWithCurrent("CI/CD", []components.SelectOption{
-			{Label: "GitHub Actions", Value: "github_actions"},
-			{Label: "GitLab CI", Value: "gitlab_ci"},
-			{Label: "Azure Pipelines", Value: "azure_pipelines"},
+			{Label: "GitHub Actions", Value: "github_actions", Description: "Workflow for GitHub-hosted repositories"},
+			{Label: "GitLab CI", Value: "gitlab_ci", Description: "Pipeline for GitLab projects"},
+			{Label: "Azure Pipelines", Value: "azure_pipelines", Description: "Pipeline for Azure DevOps"},
 		}, map[string]bool{"github_actions": s.state.GitHubActions, "gitlab_ci": s.state.GitLabCI, "azure_pipelines": s.state.AzurePipelines})
 	case stepPreview:
 		options := []components.SelectOption{
@@ -712,14 +742,44 @@ func (s configureScreen) configureInputs() configureScreen {
 }
 
 func (s configureScreen) title() string {
+	if s.state.options.Mode == ConfigureWizardModeGeneration {
+		return "crego new"
+	}
+	return "crego configure"
+}
+
+func (s configureScreen) stepTitle() string {
 	switch s.step {
 	case stepWelcome:
-		if s.state.options.Mode == ConfigureWizardModeGeneration {
-			return "crego new"
-		}
-		return "crego configure"
+		return "Welcome"
 	case stepProjectIdentity:
 		return "Project identity"
+	case stepGoVersion:
+		return "Go version"
+	case stepProjectType:
+		return "Project type"
+	case stepLayout:
+		return "Layout style"
+	case stepServer:
+		return "Server provider"
+	case stepConfiguration:
+		return "Configuration"
+	case stepLogging:
+		return "Logging"
+	case stepDatabase:
+		return "Database"
+	case stepDatabaseFramework:
+		return "SQL framework"
+	case stepMigrations:
+		return "Migrations"
+	case stepObservability:
+		return "Observability"
+	case stepTaskScheduler:
+		return "Scheduler"
+	case stepDeployment:
+		return "Deployment"
+	case stepCI:
+		return "CI"
 	case stepPreview:
 		return "Preview"
 	case stepSave:
@@ -754,16 +814,14 @@ func (s configureScreen) description() string {
 
 func (s configureScreen) hint() string {
 	switch s.step {
-	case stepWelcome:
-		return ""
 	case stepProjectIdentity:
-		return "tab switch field • enter continue • ctrl+b back"
+		return HelpLine(HelpInput)
 	case stepObservability, stepDeployment, stepCI:
-		return "space select • enter continue • ctrl+b back"
-	case stepSave:
-		return "enter confirm • ctrl+b back"
+		return HelpLine(HelpMulti)
+	case stepPreview, stepSave:
+		return HelpLine(HelpPreview)
 	default:
-		return "enter continue • ctrl+b back"
+		return HelpLine(HelpSelect)
 	}
 }
 
@@ -771,9 +829,9 @@ func (s configureScreen) identityView() string {
 	namePrefix := "  "
 	modulePrefix := "  "
 	if s.focus == 0 {
-		namePrefix = "> "
+		namePrefix = "-"
 	} else {
-		modulePrefix = "> "
+		modulePrefix = "-"
 	}
 	return strings.Join([]string{
 		s.styles.Description.Render("Project name"),
@@ -783,26 +841,211 @@ func (s configureScreen) identityView() string {
 	}, "\n")
 }
 
-func layoutTreeExamples() string {
-	return `Minimal:
-  .
-  |-- cmd
-  |   \-- app
-  |       \-- main.go
-  \-- internal
-      \-- app
-          \-- app.go
+func (s configureScreen) progress() (int, int) {
+	steps := s.visibleProgressSteps()
+	total := len(steps)
+	for index, step := range steps {
+		if step == s.step {
+			return index + 1, total
+		}
+	}
+	return 0, total
+}
 
-Layered:
-  .
-  |-- cmd
-  |   \-- app
-  |       \-- main.go
-  \-- internal
-      |-- config
-      |-- handler
-      |-- repository
-      \-- service`
+func (s configureScreen) visibleProgressSteps() []configureStep {
+	last := stepSave
+	if s.state.options.Mode == ConfigureWizardModeGeneration {
+		last = stepPreview
+	}
+	steps := make([]configureStep, 0, int(last))
+	for step := stepProjectIdentity; step <= last; step++ {
+		if shouldShowConfigureStep(step, s.state) {
+			steps = append(steps, step)
+		}
+	}
+	return steps
+}
+
+func (s configureScreen) sidebar() string {
+	lines := make([]string, 0, len(s.visibleProgressSteps())+3)
+	currentGroup := ""
+	for _, step := range s.visibleProgressSteps() {
+		group := stepGroup(step)
+		if group != currentGroup {
+			currentGroup = group
+			lines = append(lines, s.styles.Description.Render(group))
+		}
+		marker := "○"
+		style := s.styles.Description
+		if step == s.step {
+			marker = "●"
+			style = s.styles.Selected
+		} else if step < s.step {
+			marker = "✓"
+			style = s.styles.Success
+		}
+		lines = append(lines, style.Render(fmt.Sprintf("  %s %s", marker, progressStepLabel(step))))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func stepGroup(step configureStep) string {
+	switch step {
+	case stepProjectIdentity, stepGoVersion, stepProjectType, stepLayout:
+		return "Project"
+	case stepServer, stepConfiguration, stepLogging:
+		return "Stack"
+	case stepDatabase, stepDatabaseFramework, stepMigrations:
+		return "Data"
+	case stepObservability, stepTaskScheduler:
+		return "Runtime"
+	case stepDeployment, stepCI:
+		return "Delivery"
+	default:
+		return "Review"
+	}
+}
+
+func progressStepLabel(step configureStep) string {
+	switch step {
+	case stepProjectIdentity:
+		return "Identity"
+	case stepGoVersion:
+		return "Go version"
+	case stepProjectType:
+		return "Project type"
+	case stepLayout:
+		return "Layout"
+	case stepServer:
+		return "Server"
+	case stepConfiguration:
+		return "Config"
+	case stepLogging:
+		return "Logging"
+	case stepDatabase:
+		return "Database"
+	case stepDatabaseFramework:
+		return "SQL framework"
+	case stepMigrations:
+		return "Migrations"
+	case stepObservability:
+		return "Observability"
+	case stepTaskScheduler:
+		return "Scheduler"
+	case stepDeployment:
+		return "Deployment"
+	case stepCI:
+		return "CI"
+	case stepPreview:
+		return "Preview"
+	case stepSave:
+		return "Save"
+	default:
+		return "Start"
+	}
+}
+
+func (s configureScreen) stackLine() string {
+	values := selectedStackValues(s.state)
+	if len(values) == 0 {
+		return ""
+	}
+	return s.styles.Footer.Render("Stack: " + strings.Join(values, " · "))
+}
+
+func selectedStackValues(state *ConfigureWizardState) []string {
+	if state == nil {
+		return nil
+	}
+	values := make([]string, 0, 12)
+	appendIf := func(value string) {
+		value = strings.TrimSpace(value)
+		if value != "" && value != recipe.DatabaseDriverNone && value != recipe.DatabaseFrameworkNone && value != recipe.DatabaseMigrationsNone && value != recipe.TaskSchedulerNone {
+			values = append(values, value)
+		}
+	}
+	appendIf(state.ProjectType)
+	appendIf(state.Layout)
+	if state.GoVersion != "" {
+		appendIf("Go " + state.GoVersion)
+	}
+	if state.ProjectType == recipe.ProjectTypeWeb {
+		appendIf(state.Server)
+	}
+	appendIf(state.ConfigurationFormat)
+	appendIf(state.Logging)
+	if isSQLDatabase(state.Database) && state.DatabaseFramework != "" && state.DatabaseFramework != recipe.DatabaseFrameworkNone {
+		appendIf(state.Database + "/" + state.DatabaseFramework)
+	} else {
+		appendIf(state.Database)
+	}
+	appendIf(state.Migrations)
+	appendIf(state.TaskScheduler)
+	if state.Docker {
+		appendIf("docker")
+	}
+	if state.Compose {
+		appendIf("compose")
+	}
+	if state.GitHubActions {
+		appendIf("github actions")
+	}
+	if state.GitLabCI {
+		appendIf("gitlab ci")
+	}
+	if state.AzurePipelines {
+		appendIf("azure pipelines")
+	}
+	return values
+}
+
+func (s configureScreen) livePreview() string {
+	return s.filesPreview()
+}
+
+func (s configureScreen) filesPreview() string {
+	r := s.state.Recipe()
+	plan, err := generator.Resolve(component.NewRegistry(), r)
+	if err != nil {
+		return "Plan error:\n  " + err.Error()
+	}
+	files, err := generator.RenderFileTargets(r, plan)
+	if err != nil {
+		return "Plan error:\n  " + err.Error()
+	}
+
+	lines := []string{"Files tree:\n"}
+	for _, file := range files {
+		lines = append(lines, "  "+file.Target)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (s configureScreen) layoutPreview() string {
+	return layoutPreview(s.selectInput.Selected().Value)
+}
+
+func layoutPreview(style string) string {
+	switch style {
+	case recipe.LayoutStyleLayered:
+		return `Preview
+┌─────────────────────────────┐
+│ cmd/app/main.go             │
+│ internal/app/app.go         │
+│ internal/config/config.go   │
+│ internal/handler/http.go    │
+│ internal/service/service.go │
+└─────────────────────────────┘`
+	default:
+		return `Preview
+┌─────────────────────────────┐
+│ cmd/app/main.go             │
+│ internal/app/app.go         │
+│ internal/app/config.go      │
+│ internal/app/http.go        │
+│ internal/app/service.go     │
+└─────────────────────────────┘`
+	}
 }
 
 func nextConfigureStep(current configureStep, state *ConfigureWizardState) configureStep {
@@ -835,7 +1078,7 @@ func shouldShowConfigureStep(step configureStep, state *ConfigureWizardState) bo
 }
 
 func isConfigureBackKey(key tea.KeyMsg) bool {
-	return key.String() == "ctrl+b"
+	return key.String() == "ctrl+b" || key.String() == "esc"
 }
 
 func frameworkOptions(driver string) []components.SelectOption {
@@ -843,10 +1086,18 @@ func frameworkOptions(driver string) []components.SelectOption {
 	result := make([]components.SelectOption, 0, len(options))
 	for _, option := range options {
 		label := option
+		description := "No database access layer"
 		if option == recipe.DatabaseFrameworkDatabaseSQL {
 			label = "database/sql"
+			description = "Standard library SQL API"
 		}
-		result = append(result, components.SelectOption{Label: label, Value: option})
+		if option == recipe.DatabaseFrameworkPGX {
+			description = "PostgreSQL-native driver and toolkit"
+		}
+		if option == recipe.DatabaseFrameworkGORM {
+			description = "Full-featured ORM"
+		}
+		result = append(result, components.SelectOption{Label: label, Value: option, Description: description})
 	}
 	return result
 }

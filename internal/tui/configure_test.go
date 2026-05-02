@@ -78,11 +78,17 @@ func (s *ConfigureWizardTestSuite) TestGenerationModePrefillsModuleAndOutputPrev
 	s.Require().Contains(view, "output directory: custom-orders")
 	s.Require().Contains(view, "task_scheduler: gocron")
 	s.Require().Contains(view, "Components:")
-	s.Require().Contains(view, "Files:")
 	s.Require().Contains(view, "Actions:")
 	s.Require().Contains(view, "write files")
 	s.Require().Contains(view, "run go mod tidy")
 	s.Require().NotContains(view, "Normalized recipe:")
+	s.Require().NotContains(view, "Files:")
+
+	files := screen.livePreview()
+
+	s.Require().Contains(files, "Files tree")
+	s.Require().Contains(files, "cmd/orders-web/main.go")
+	s.Require().Contains(files, "internal/app/app.go")
 }
 
 func (s *ConfigureWizardTestSuite) TestGenerationPreviewActions() {
@@ -118,18 +124,19 @@ func (s *ConfigureWizardTestSuite) TestLayoutViewShowsTreeExamplesBelowOptions()
 
 	s.Require().Contains(view, "Minimal")
 	s.Require().Contains(view, "Layered")
-	s.Require().Contains(view, "|-- cmd")
-	s.Require().Contains(view, "\\-- internal")
-	s.Require().Less(strings.Index(view, "Minimal"), strings.Index(view, "|-- cmd"))
+	s.Require().Contains(view, "Preview")
+	s.Require().Contains(view, "cmd/app/main.go")
+	s.Require().Contains(view, "internal/app/app.go")
+	s.Require().Less(strings.Index(view, "Minimal"), strings.Index(view, "cmd/app/main.go"))
 }
 
 func (s *ConfigureWizardTestSuite) TestGoVersionOptionsAreDescending() {
 	screen := newConfigureScreen(NewStyles(nil, true), NewConfigureWizardState(nil, ConfigureWizardOptions{}), stepGoVersion)
 
 	s.Require().Equal([]components.SelectOption{
-		{Label: "Go 1.26", Value: "1.26"},
-		{Label: "Go 1.25", Value: "1.25"},
-		{Label: "Go 1.24", Value: "1.24"},
+		{Label: "Go 1.26", Value: "1.26", Description: "Latest toolchain target"},
+		{Label: "Go 1.25", Value: "1.25", Description: "Stable modern runtime"},
+		{Label: "Go 1.24", Value: "1.24", Description: "Conservative compatibility"},
 	}, screen.selectInput.Options)
 }
 
@@ -153,8 +160,8 @@ func (s *ConfigureWizardTestSuite) TestMultiSelectScreensShowSelectionHint() {
 		s.Run(fmt.Sprintf("step %d", step), func() {
 			screen := newConfigureScreen(NewStyles(nil, true), NewConfigureWizardState(nil, ConfigureWizardOptions{}), step)
 
-			s.Require().Contains(screen.View(), "space select")
-			s.Require().Contains(screen.View(), "ctrl+b back")
+			s.Require().Contains(screen.View(), "space toggle")
+			s.Require().Contains(screen.View(), "esc back")
 		})
 	}
 }

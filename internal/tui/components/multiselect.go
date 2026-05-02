@@ -75,7 +75,7 @@ func (m MultiSelect) View(styles Styles) string {
 	for i, option := range m.Options {
 		cursor := "  "
 		if i == m.Cursor {
-			cursor = "> "
+			cursor = "› "
 		}
 
 		check := "[ ] "
@@ -87,7 +87,11 @@ func (m MultiSelect) View(styles Styles) string {
 		if i == m.Cursor {
 			labelStyle = styles.Selected
 		}
-		lines = append(lines, labelStyle.Render(cursor+check+option.Label))
+		label := cursor + check + option.Label
+		if option.Description != "" {
+			label += "  " + styles.Description.Render(option.Description)
+		}
+		lines = append(lines, labelStyle.Render(label))
 	}
 
 	return strings.Join(lines, "\n")
