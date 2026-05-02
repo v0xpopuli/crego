@@ -196,6 +196,7 @@ func (s *CliTestSuite) TestRecipeCommandHelpExamples() {
 		{"recipe", "init"},
 		{"recipe", "validate"},
 		{"recipe", "print"},
+		{"recipe", "edit"},
 	} {
 		found, _, err := cmd.Find(args)
 
@@ -205,15 +206,28 @@ func (s *CliTestSuite) TestRecipeCommandHelpExamples() {
 	}
 }
 
+func (s *CliTestSuite) TestRecipeEditCommandFlags() {
+	cmd := NewRootCommandWithWriters(VersionInfo{}, &bytes.Buffer{}, &bytes.Buffer{})
+
+	found, _, err := cmd.Find([]string{"recipe", "edit"})
+
+	s.Require().NoError(err)
+	s.Require().NotNil(found.Flag("save-as"))
+	s.Require().NotNil(found.Flag("readonly"))
+	s.Require().Contains(found.Example, "crego recipe edit crego.yaml --save-as company-web.yaml")
+	s.Require().Contains(found.Example, "crego recipe edit crego.yaml --readonly")
+}
+
 func (s *CliTestSuite) TestRecipeCommandRequiresSubcommand() {
 	out, _, err := s.executeCLI("recipe")
 
 	s.Require().Error(err)
-	s.Require().EqualError(err, "recipe requires a subcommand: init, validate, or print")
+	s.Require().EqualError(err, "recipe requires a subcommand: init, validate, print, or edit")
 	s.Require().Contains(out, "Work with crego recipes")
 	s.Require().Contains(out, "init")
 	s.Require().Contains(out, "validate")
 	s.Require().Contains(out, "print")
+	s.Require().Contains(out, "edit")
 }
 
 func (s *CliTestSuite) executeCLI(args ...string) (string, string, error) {
