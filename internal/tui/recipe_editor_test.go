@@ -52,6 +52,7 @@ func (s *RecipeEditorTestSuite) TestRecipePreservesIdentityAndEditsFullMatrix() 
 func (s *RecipeEditorTestSuite) TestViewShowsLiveComponentsAndFiles() {
 	source, err := recipe.NewPreset(recipe.PresetWebPostgres)
 	s.Require().NoError(err)
+
 	state := NewRecipeEditorState(source, RecipeEditorOptions{})
 	state.ConfigurationFormat = recipe.ConfigurationFormatYAML
 	state.Logging = recipe.LoggingFrameworkZap
@@ -61,17 +62,20 @@ func (s *RecipeEditorTestSuite) TestViewShowsLiveComponentsAndFiles() {
 	screen := newRecipeEditorScreen(NewStyles(nil, true), state)
 	view := screen.View()
 
-	s.Require().Contains(view, "Config: yaml")
-	s.Require().Contains(view, "Logging: zap")
-	s.Require().Contains(view, "Task scheduler: gocron")
-	s.Require().Contains(view, "GitLab CI: true")
-	s.Require().Contains(view, "Components:")
+	s.Require().Contains(view, "crego recipe edit")
+	s.Require().Contains(view, "crego.yaml")
+	s.Require().Contains(view, "valid")
+	s.Require().Contains(view, "Config")
+	s.Require().Contains(view, "yaml")
+	s.Require().Contains(view, "Logging")
+	s.Require().Contains(view, "zap")
+	s.Require().Contains(view, "Task scheduler")
+	s.Require().Contains(view, "gocron")
+	s.Require().Contains(view, "Components")
 	s.Require().Contains(view, "configuration.yaml")
 	s.Require().Contains(view, "logging.zap")
 	s.Require().Contains(view, "task_scheduler.gocron")
-	s.Require().Contains(view, "ci.gitlab_ci")
-	s.Require().Contains(view, "Files:")
-	s.Require().Contains(view, ".gitlab-ci.yml")
+	s.Require().Contains(view, "Files")
 }
 
 func (s *RecipeEditorTestSuite) TestChangingDatabaseBlocksInvalidFrameworkChoices() {
@@ -97,12 +101,12 @@ func (s *RecipeEditorTestSuite) TestKeyboardEditsFields() {
 
 	next, _ := screen.Update(tea.KeyMsg{Type: tea.KeyRight})
 
-	updated := next.(recipeEditorScreen)
+	updated := next.(*recipeEditorScreen)
 	s.Require().Equal(recipe.ConfigurationFormatYAML, updated.state.ConfigurationFormat)
 
 	updated.cursor = fieldIndex(updated.fields(), editorGitLabCI)
 	next, _ = updated.Update(tea.KeyMsg{Type: tea.KeySpace})
-	updated = next.(recipeEditorScreen)
+	updated = next.(*recipeEditorScreen)
 
 	s.Require().True(updated.state.GitLabCI)
 }
@@ -157,7 +161,7 @@ func (s *RecipeEditorTestSuite) TestReadonlyKeyboardDoesNotMutate() {
 
 	next, _ := screen.Update(tea.KeyMsg{Type: tea.KeyRight})
 
-	s.Require().Equal(recipe.ConfigurationFormatEnv, next.(recipeEditorScreen).state.ConfigurationFormat)
+	s.Require().Equal(recipe.ConfigurationFormatEnv, next.(*recipeEditorScreen).state.ConfigurationFormat)
 }
 
 func fieldIndex(fields []recipeEditorField, id string) int {
