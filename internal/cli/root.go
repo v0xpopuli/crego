@@ -134,7 +134,7 @@ Generation, recipe schema, and component registry behavior will be added in late
 
 	cmd.AddCommand(
 		newNewCommand(out),
-		newConfigureCommand(out),
+		newConfigureCommand(out, opts),
 		newGenerateCommand(out, opts),
 		newRecipeCommand(out, errOut),
 		newComponentsCommand(out),
