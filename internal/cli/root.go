@@ -140,7 +140,6 @@ Generation, recipe schema, and component registry behavior will be added in late
 		newComponentsCommand(out),
 		newExplainCommand(out),
 		newVersionCommand(versionInfo, out),
-		newCompletionCommand(cmd, out),
 	)
 
 	return cmd
@@ -148,18 +147,6 @@ Generation, recipe schema, and component registry behavior will be added in late
 
 func notImplementedRunE(_ *cobra.Command, _ []string) error {
 	return errNotImplemented
-}
-
-func notImplementedCommand(use string, short string, long string, example string, out io.Writer) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:     use,
-		Short:   short,
-		Long:    long,
-		Example: example,
-		RunE:    notImplementedRunE,
-	}
-	cmd.SetOut(out)
-	return cmd
 }
 
 func versionLine(info VersionInfo) string {

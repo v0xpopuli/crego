@@ -57,6 +57,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.showHelp = !m.showHelp
 			return m, nil
 		case "esc":
+			if managed, ok := m.CurrentScreen().(shellManaged); ok && managed.UsesShellLayout() {
+				break
+			}
 			if len(m.screens) > 1 {
 				m.screens = m.screens[:len(m.screens)-1]
 				return m, nil
@@ -116,12 +119,17 @@ func (m Model) View() string {
 		return ""
 	}
 
-	parts := []string{}
+	var parts []string
 	if errorPanel := components.ErrorPanel(m.styles.Components(), m.err); errorPanel != "" {
 		parts = append(parts, errorPanel)
 	}
 	parts = append(parts, current.View())
-	parts = append(parts, components.Footer(m.styles.Components(), m.showHelp))
+	if managed, ok := current.(shellManaged); !ok || !managed.UsesShellLayout() {
+		parts = append(parts, components.Footer(m.styles.Components(), m.showHelp))
+	}
 
+	if managed, ok := current.(shellManaged); ok && managed.UsesShellLayout() {
+		return strings.Join(parts, "\n\n")
+	}
 	return m.styles.App.Render(strings.Join(parts, "\n\n"))
 }

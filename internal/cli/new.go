@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/v0xpopuli/crego/internal/component"
@@ -154,7 +155,7 @@ func runInteractiveNew(out io.Writer, globalOpts *globalOptions, opts *newOption
 			generationOpts.outDir = state.OutputDirectory()
 		}
 		generationOpts.force = generationOpts.force || state.ForceOverwrite
-		if err := generateRecipe(out, state.Recipe(), generationOpts); err != nil {
+		if err := runInteractiveGeneration(out, globalOpts, state.Recipe(), generationOpts); err != nil {
 			return fmt.Errorf("generate project in %q: %w", generationOpts.outDir, err)
 		}
 		return nil
@@ -241,11 +242,69 @@ func generationOptionsFromNew(opts *newOptions) generateOptions {
 	}
 }
 
+func runInteractiveGeneration(out io.Writer, globalOpts *globalOptions, r *recipe.Recipe, opts generateOptions) error {
+	tasks := []tui.GenerationTask{
+		{Key: "resolve", Label: "Resolving components"},
+		{Key: "render", Label: "Rendering templates"},
+		{Key: "tidy", Label: "Running go mod tidy"},
+		{Key: "git", Label: "Initializing git"},
+	}
+	if opts.skipGoModTidy {
+		tasks[2].Status = tui.GenerationDone
+		tasks[2].Detail = "skipped"
+	}
+	if opts.skipGitInit {
+		tasks[3].Status = tui.GenerationDone
+		tasks[3].Detail = "skipped"
+	}
+
+	var runErr error
+	app := tui.NewGenerationApp("crego new", tasks, func(progress func(key string, status tui.GenerationStatus, detail string)) (tui.GenerationSummary, error) {
+		summary, err := generateRecipeWithProgress(r, opts, progress)
+		runErr = err
+		return summary.GenerationSummary, err
+	}, tui.AppOptions{
+		In:      os.Stdin,
+		Out:     out,
+		NoColor: globalOpts != nil && globalOpts.NoColor,
+	})
+	if err := app.Run(); err != nil {
+		return err
+	}
+	return runErr
+}
+
 func generateRecipe(out io.Writer, r *recipe.Recipe, opts generateOptions) error {
+	summary, err := generateRecipeWithProgress(r, opts, nil)
+	if err != nil {
+		return err
+	}
+	if opts.dryRun {
+		return writeGenerationPlan(out, summary.plan, summary.result)
+	}
+	return writeSuccessSummary(out, summary)
+}
+
+type generationSummary struct {
+	tui.GenerationSummary
+	plan   *generator.Plan
+	result *generator.Result
+}
+
+func generateRecipeWithProgress(r *recipe.Recipe, opts generateOptions, progress func(key string, status tui.GenerationStatus, detail string)) (generationSummary, error) {
+	start := time.Now()
+	report := func(key string, status tui.GenerationStatus, detail string) {
+		if progress != nil {
+			progress(key, status, detail)
+		}
+	}
+
+	report("resolve", tui.GenerationRunning, "")
 	recipe.Normalize(r)
 	recipe.ApplyDefaults(r)
 	if err := recipe.Validate(r); err != nil {
-		return err
+		report("resolve", tui.GenerationFailed, "")
+		return generationSummary{}, err
 	}
 	outDir := opts.outDir
 	if outDir == "" {
@@ -254,46 +313,89 @@ func generateRecipe(out io.Writer, r *recipe.Recipe, opts generateOptions) error
 
 	plan, err := generator.Resolve(component.NewRegistry(), r)
 	if err != nil {
-		return err
+		report("resolve", tui.GenerationFailed, "")
+		return generationSummary{}, err
 	}
+	report("resolve", tui.GenerationDone, fmt.Sprintf("%d components", len(plan.Components)))
+
+	report("render", tui.GenerationRunning, "")
 	result, err := generator.NewGenerator(templatefs.FS).Generate(nil, r, plan, generator.Options{
 		OutDir: outDir,
 		DryRun: opts.dryRun,
 		Force:  opts.force,
 	})
 	if err != nil {
-		return err
+		report("render", tui.GenerationFailed, "")
+		return generationSummary{}, err
+	}
+	fileCount := generationFileCount(result)
+	report("render", tui.GenerationDone, fmt.Sprintf("%d files", fileCount))
+
+	summary := generationSummary{
+		GenerationSummary: tui.GenerationSummary{
+			OutputDir: outDir,
+			FileCount: fileCount,
+			Stack:     recipeStackSummary(r),
+			Elapsed:   time.Since(start),
+		},
+		plan:   plan,
+		result: result,
 	}
 	if opts.dryRun {
-		return writeGenerationPlan(out, plan, result)
+		return summary, nil
 	}
-	if err := runPostGenerationHooks(outDir, opts); err != nil {
-		return err
+	if err := runPostGenerationHooks(outDir, opts, report); err != nil {
+		return generationSummary{}, err
 	}
-	return writeSuccess(out, outDir)
+	summary.Elapsed = time.Since(start)
+	return summary, nil
 }
 
-func runPostGenerationHooks(outDir string, opts generateOptions) error {
+func generationFileCount(result *generator.Result) int {
+	if result == nil {
+		return 0
+	}
+	if len(result.FilesWritten) > 0 {
+		return len(result.FilesWritten)
+	}
+	return len(result.FilesPlanned)
+}
+
+func runPostGenerationHooks(outDir string, opts generateOptions, progress func(key string, status tui.GenerationStatus, detail string)) error {
 	if !opts.skipGoModTidy {
+		progress("tidy", tui.GenerationRunning, "")
 		goModPath := filepath.Join(outDir, "go.mod")
 		if _, err := os.Stat(goModPath); err == nil {
 			if err := runQuietCommand(outDir, "go", "mod", "tidy"); err != nil {
+				progress("tidy", tui.GenerationFailed, "")
 				return err
 			}
+			progress("tidy", tui.GenerationDone, "")
 		} else if !errors.Is(err, os.ErrNotExist) {
+			progress("tidy", tui.GenerationFailed, "")
 			return fmt.Errorf("inspect go.mod: %w", err)
+		} else {
+			progress("tidy", tui.GenerationDone, "no go.mod")
 		}
 	}
 	if opts.skipGitInit {
 		return nil
 	}
+	progress("git", tui.GenerationRunning, "")
 	gitDir := filepath.Join(outDir, ".git")
 	if _, err := os.Stat(gitDir); err == nil {
+		progress("git", tui.GenerationDone, "already initialized")
 		return nil
 	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		progress("git", tui.GenerationFailed, "")
 		return fmt.Errorf("inspect git repository: %w", err)
 	}
-	return runQuietCommand(outDir, "git", "init")
+	if err := runQuietCommand(outDir, "git", "init"); err != nil {
+		progress("git", tui.GenerationFailed, "")
+		return err
+	}
+	progress("git", tui.GenerationDone, "")
+	return nil
 }
 
 func runQuietCommand(dir string, name string, args ...string) error {

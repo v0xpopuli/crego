@@ -22,16 +22,20 @@ type Styles struct {
 	Help        lipgloss.Style
 	Error       lipgloss.Style
 	Preview     lipgloss.Style
+	Border      lipgloss.Style
+	Success     lipgloss.Style
+	Warning     lipgloss.Style
 }
 
 func (s Styles) Components() components.Styles {
 	return components.Styles{
-		Title:    s.Title,
-		Option:   s.Option,
-		Selected: s.Selected,
-		Footer:   s.Footer,
-		Error:    s.Error,
-		Preview:  s.Preview,
+		Title:       s.Title,
+		Description: s.Description,
+		Option:      s.Option,
+		Selected:    s.Selected,
+		Footer:      s.Footer,
+		Error:       s.Error,
+		Preview:     s.Preview,
 	}
 }
 
@@ -52,6 +56,8 @@ func NewStyles(out io.Writer, noColor bool) Styles {
 	style := renderer.NewStyle
 	muted := lipgloss.AdaptiveColor{Light: "241", Dark: "246"}
 	accent := lipgloss.AdaptiveColor{Light: "#5A56E0", Dark: "#8B87FF"}
+	successColor := lipgloss.AdaptiveColor{Light: "#167C3A", Dark: "#5FE08A"}
+	warningColor := lipgloss.AdaptiveColor{Light: "#9A6A00", Dark: "#FFD166"}
 	errorColor := lipgloss.AdaptiveColor{Light: "#C93434", Dark: "#FF6B6B"}
 
 	return Styles{
@@ -61,31 +67,34 @@ func NewStyles(out io.Writer, noColor bool) Styles {
 			Padding(1, 2),
 		Title: style().
 			Bold(true).
-			Foreground(accent).
-			MarginBottom(1),
+			Foreground(accent),
 		Description: style().
-			Foreground(muted).
-			MarginBottom(2),
+			Foreground(muted),
 		Option: style().
 			PaddingLeft(2),
 		Selected: style().
 			Bold(true).
-			Foreground(accent),
+			Foreground(successColor),
 		Footer: style().
-			Foreground(muted).
-			MarginTop(2),
+			Foreground(muted),
 		Help: style().
-			Foreground(muted).
-			MarginTop(1),
+			Foreground(muted),
 		Error: style().
 			Foreground(errorColor).
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(errorColor).
-			Padding(0, 1).
-			MarginBottom(1),
+			Padding(0, 1),
 		Preview: style().
 			Border(lipgloss.NormalBorder()).
 			BorderForeground(muted).
 			Padding(1, 2),
+		Border: style().
+			Border(lipgloss.NormalBorder()).
+			BorderForeground(accent),
+		Success: style().
+			Bold(true).
+			Foreground(successColor),
+		Warning: style().
+			Foreground(warningColor),
 	}
 }

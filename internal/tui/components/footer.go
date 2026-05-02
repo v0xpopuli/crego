@@ -5,7 +5,7 @@ import (
 )
 
 func Footer(styles Styles, showHelp bool) string {
-	keys := "enter confirm  esc back  q cancel  ? help"
+	keys := "enter confirm  esc back  q cancel"
 	if showHelp {
 		keys = strings.Join([]string{
 			"enter confirm/next",
@@ -13,7 +13,7 @@ func Footer(styles Styles, showHelp bool) string {
 			"up/down move selection",
 			"space toggle multi-select",
 			"q or ctrl+c cancel",
-			"? hide help",
+			"q cancels the current flow",
 		}, "\n")
 	}
 	return styles.Footer.Render(keys)

@@ -15,8 +15,9 @@ type (
 	}
 
 	SelectOption struct {
-		Label string
-		Value string
+		Label       string
+		Value       string
+		Description string
 	}
 )
 
@@ -74,10 +75,14 @@ func (s Select) View(styles Styles) string {
 		prefix := "  "
 		labelStyle := styles.Option
 		if i == s.Cursor {
-			prefix = "> "
+			prefix = "› "
 			labelStyle = styles.Selected
 		}
-		lines = append(lines, labelStyle.Render(prefix+option.Label))
+		label := prefix + option.Label
+		if option.Description != "" {
+			label += "  " + styles.Description.Render(option.Description)
+		}
+		lines = append(lines, labelStyle.Render(label))
 	}
 
 	return strings.Join(lines, "\n")

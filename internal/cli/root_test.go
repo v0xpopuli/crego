@@ -29,7 +29,6 @@ func (s *CliTestSuite) TestRootCommand() {
 			"components",
 			"explain",
 			"version",
-			"completion",
 		} {
 			child, _, err := cmd.Find([]string{name})
 
