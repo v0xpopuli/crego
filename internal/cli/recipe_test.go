@@ -84,14 +84,14 @@ func (s *CliTestSuite) TestRecipeInitCommand() {
 
 		_, _, err := s.executeCLI(
 			"recipe", "init",
-			"--module", "github.com/acme/orders-api",
+			"--module", "github.com/example/orders-api",
 			"--out", path,
 		)
 
 		s.Require().NoError(err)
 		r, err := recipe.Load(path)
 		s.Require().NoError(err)
-		s.Require().Equal("github.com/acme/orders-api", r.Project.Module)
+		s.Require().Equal("github.com/example/orders-api", r.Project.Module)
 		s.Require().Equal("orders-api", r.Project.Name)
 	})
 
@@ -100,7 +100,7 @@ func (s *CliTestSuite) TestRecipeInitCommand() {
 
 		_, _, err := s.executeCLI(
 			"recipe", "init",
-			"--module", "github.com/acme/orders-api",
+			"--module", "github.com/example/orders-api",
 			"--name", "orders",
 			"--out", path,
 		)

@@ -51,7 +51,7 @@ func newRecipeCommand(out io.Writer, errOut io.Writer) *cobra.Command {
 Recipes will describe project metadata, selected components, and generation
 settings so projects can be reproduced deterministically.`,
 		Example: `  crego recipe init
-  crego recipe init --preset web-postgres --module github.com/acme/orders
+  crego recipe init --preset web-postgres --module github.com/example/orders
   crego recipe validate crego.yaml
   crego recipe print crego.yaml --json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -81,7 +81,7 @@ func newRecipeInitCommand(out io.Writer) *cobra.Command {
 The generated recipe is normalized and can be validated, reviewed, or passed to
 future generation commands.`,
 		Example: `  crego recipe init
-  crego recipe init --preset web-postgres --module github.com/acme/orders
+  crego recipe init --preset web-postgres --module github.com/example/orders
   crego recipe init --preset cli-basic --name worker-tools --out recipe.yaml
   crego recipe init --out crego.yaml --overwrite`,
 		Args: cobra.NoArgs,

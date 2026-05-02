@@ -3,19 +3,22 @@ package cli
 import (
 	"fmt"
 	"io"
+	"path"
+	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/v0xpopuli/crego/internal/component"
 	"github.com/v0xpopuli/crego/internal/generator"
 	"github.com/v0xpopuli/crego/internal/recipe"
-	templatefs "github.com/v0xpopuli/crego/internal/templates"
 )
 
 type generateOptions struct {
-	recipePath string
-	outDir     string
-	dryRun     bool
-	force      bool
+	recipePath     string
+	outDir         string
+	dryRun         bool
+	force          bool
+	skipGoModTidy  bool
+	skipGitInit    bool
+	nonInteractive bool
 }
 
 func newGenerateCommand(out io.Writer, global *globalOptions) *cobra.Command {
@@ -27,20 +30,27 @@ func newGenerateCommand(out io.Writer, global *globalOptions) *cobra.Command {
 
 The command loads and validates the recipe, resolves selected components, and
 renders project files into the output directory.`,
-		Example: `  crego generate --config crego.yaml --out ./orders-api
+		Example: `  crego generate --recipe crego.yaml
+  crego generate --config crego.yaml --out ./orders-api
   crego generate --recipe ./recipes/service.yaml --out ./service
   crego generate --recipe crego.yaml --out ./service --dry-run
   crego generate --recipe crego.yaml --out ./service --force`,
 		Args: cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if !cmd.Flags().Changed("recipe") && global != nil && global.Config != "" {
+				opts.recipePath = global.Config
+			}
 			return runGenerate(out, global, opts)
 		},
 	}
 	cmd.SetOut(out)
-	cmd.Flags().StringVarP(&opts.recipePath, "recipe", "r", "", "Path to the recipe file")
-	cmd.Flags().StringVarP(&opts.outDir, "out", "o", ".", "Directory to write generated project files")
+	cmd.Flags().StringVarP(&opts.recipePath, "recipe", "r", "crego.yaml", "Path to the recipe file")
+	cmd.Flags().StringVarP(&opts.outDir, "out", "o", "", "Directory to write generated project files")
 	cmd.Flags().BoolVar(&opts.dryRun, "dry-run", false, "Print generated files without writing them")
 	cmd.Flags().BoolVar(&opts.force, "force", false, "Overwrite existing generated target files")
+	cmd.Flags().BoolVar(&opts.skipGoModTidy, "skip-go-mod-tidy", false, "Skip go mod tidy after generation")
+	cmd.Flags().BoolVar(&opts.skipGitInit, "skip-git-init", false, "Skip git repository initialization after generation")
+	cmd.Flags().BoolVar(&opts.nonInteractive, "non-interactive", false, "Run without interactive prompts")
 	return cmd
 }
 
@@ -58,36 +68,88 @@ func runGenerate(out io.Writer, global *globalOptions, opts *generateOptions) er
 		return err
 	}
 
-	plan, err := generator.Resolve(component.NewRegistry(), r)
-	if err != nil {
-		return err
-	}
-
-	result, err := generator.NewGenerator(templatefs.FS).Generate(nil, r, plan, generator.Options{
-		OutDir: opts.outDir,
-		DryRun: opts.dryRun,
-		Force:  opts.force,
-	})
-	if err != nil {
-		return err
-	}
-
-	if opts.dryRun {
-		return writeGeneratedFiles(out, "planned files", result.FilesPlanned)
-	}
-	return writeGeneratedFiles(out, "generated files", result.FilesWritten)
+	return generateRecipe(out, r, *opts)
 }
 
-func writeGeneratedFiles(out io.Writer, label string, files []string) error {
+func defaultOutputDirectory(r *recipe.Recipe) string {
+	if r == nil {
+		return "."
+	}
+	if strings.TrimSpace(r.Project.Name) != "" {
+		return r.Project.Name
+	}
+	module := strings.TrimSuffix(strings.TrimSpace(r.Project.Module), "/")
+	if module == "" {
+		return "."
+	}
+	name := path.Base(module)
+	if name == "." || name == "/" {
+		return "."
+	}
+	return name
+}
+
+func moduleBasename(module string) string {
+	module = strings.TrimSuffix(strings.TrimSpace(module), "/")
+	if module == "" {
+		return ""
+	}
+	name := path.Base(module)
+	if name == "." || name == "/" {
+		return ""
+	}
+	return name
+}
+
+func writeSuccess(out io.Writer, outDir string) error {
+	_, err := fmt.Fprintf(out, `Project generated successfully.
+
+Next steps:
+  cd %s
+  make test
+  make run
+`, outDir)
+	return err
+}
+
+func writeGenerationPlan(out io.Writer, plan *generator.Plan, result *generator.Result) error {
+	if _, err := fmt.Fprintln(out, "Generation plan"); err != nil {
+		return err
+	}
+	if err := writeGenerationList(out, "Files", result.FilesPlanned); err != nil {
+		return err
+	}
+	if plan == nil {
+		return nil
+	}
+	modules := make([]string, 0, len(plan.GoModules))
+	for _, module := range plan.GoModules {
+		if module.Version == "" {
+			modules = append(modules, module.Path)
+			continue
+		}
+		modules = append(modules, module.Path+" "+module.Version)
+	}
+	if err := writeGenerationList(out, "Go modules", modules); err != nil {
+		return err
+	}
+	hooks := make([]string, 0, len(plan.Hooks))
+	for _, hook := range plan.Hooks {
+		hooks = append(hooks, hook.Name)
+	}
+	return writeGenerationList(out, "Hooks", hooks)
+}
+
+func writeGenerationList(out io.Writer, label string, values []string) error {
 	if _, err := fmt.Fprintf(out, "%s:\n", label); err != nil {
 		return err
 	}
-	if len(files) == 0 {
+	if len(values) == 0 {
 		_, err := fmt.Fprintln(out, "  none")
 		return err
 	}
-	for _, file := range files {
-		if _, err := fmt.Fprintf(out, "  %s\n", file); err != nil {
+	for _, value := range values {
+		if _, err := fmt.Fprintf(out, "  %s\n", value); err != nil {
 			return err
 		}
 	}
