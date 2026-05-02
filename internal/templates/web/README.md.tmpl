@@ -121,7 +121,10 @@ GitHub Actions is configured in `.github/workflows/test.yml`.
 {{ if .Recipe.CI.GitLabCI -}}
 GitLab CI is configured in `.gitlab-ci.yml`.
 {{ end -}}
-Both workflows prepare modules, run `go vet ./...`, and run `go test ./...`.
+{{ if .Recipe.CI.AzurePipelines -}}
+Azure Pipelines is configured in `azure-pipelines.yml`.
+{{ end -}}
+Configured CI files prepare modules, run `go vet ./...`, and run `go test ./...`.
 {{ end }}
 
 ## Endpoints
@@ -140,7 +143,7 @@ Both workflows prepare modules, run `go vet ./...`, and run `go test ./...`.
 Configuration is loaded from environment variables.
 
 ```sh
-APP_ENV=development SERVER_PORT={{ .Recipe.Server.Port }} LOGGING_FORMAT={{ .Recipe.Logging.Format }}{{ if hasDatabase "postgres" }} DATABASE_POSTGRES_URL='postgres://postgres:postgres@localhost:5432/app?sslmode=disable'{{ end }}{{ if hasDatabase "mysql" }} DATABASE_MYSQL_URL='mysql://root:root@tcp(localhost:3306)/app?parseTime=true'{{ end }}{{ if hasDatabase "sqlite" }} DATABASE_SQLITE_URL='file:app.db?_foreign_keys=on'{{ end }}{{ if and (anySQLDatabaseEnabled) (sqlMigrations .Recipe.Database.Migrations) }} DATABASE_MIGRATIONS='file://scripts/migrations'{{ end }}{{ if hasDatabase "redis" }} DATABASE_REDIS_ADDRESS='localhost:6379'{{ end }}{{ if hasDatabase "mongodb" }} DATABASE_MONGODB_URI='mongodb://localhost:27017/app'{{ end }} make run
+APP_ENV=development SERVER_PORT={{ .Recipe.Server.Port }} LOGGING_FORMAT={{ .Recipe.Logging.Format }}{{ if hasDatabase "postgres" }} DATABASE_POSTGRES_USER_NAME=postgres DATABASE_POSTGRES_PASSWORD=postgres DATABASE_POSTGRES_HOST=localhost:5432 DATABASE_POSTGRES_DATABASE=app{{ end }}{{ if hasDatabase "mysql" }} DATABASE_MYSQL_USER_NAME=root DATABASE_MYSQL_PASSWORD=root DATABASE_MYSQL_HOST=localhost:3306 DATABASE_MYSQL_DATABASE=app{{ end }}{{ if hasDatabase "sqlite" }} DATABASE_SQLITE_PATH=app.db DATABASE_SQLITE_FOREIGN_KEYS=true{{ end }}{{ if and (anySQLDatabaseEnabled) (sqlMigrations .Recipe.Database.Migrations) }} DATABASE_MIGRATIONS='file://scripts/migrations'{{ end }}{{ if hasDatabase "redis" }} DATABASE_REDIS_HOST=localhost:6379 DATABASE_REDIS_DATABASE=0{{ end }}{{ if hasDatabase "mongodb" }} DATABASE_MONGODB_HOST=localhost:27017 DATABASE_MONGODB_DATABASE=app{{ end }} make run
 ```
 {{ else }}
 Configuration is loaded from `-config`, then `CONFIG_PATH`, then `configs/config.{{ .Recipe.Configuration.Format }}`.
@@ -148,7 +151,7 @@ Configuration is loaded from `-config`, then `CONFIG_PATH`, then `configs/config
 Environment variables override file values:
 
 ```sh
-CONFIG_PATH=configs/config.{{ .Recipe.Configuration.Format }} APP_ENV=development SERVER_PORT={{ .Recipe.Server.Port }} LOGGING_FORMAT={{ .Recipe.Logging.Format }}{{ if hasDatabase "postgres" }} DATABASE_POSTGRES_URL='postgres://postgres:postgres@localhost:5432/app?sslmode=disable'{{ end }}{{ if hasDatabase "mysql" }} DATABASE_MYSQL_URL='mysql://root:root@tcp(localhost:3306)/app?parseTime=true'{{ end }}{{ if hasDatabase "sqlite" }} DATABASE_SQLITE_URL='file:app.db?_foreign_keys=on'{{ end }}{{ if and (anySQLDatabaseEnabled) (sqlMigrations .Recipe.Database.Migrations) }} DATABASE_MIGRATIONS='file://scripts/migrations'{{ end }}{{ if hasDatabase "redis" }} DATABASE_REDIS_ADDRESS='localhost:6379'{{ end }}{{ if hasDatabase "mongodb" }} DATABASE_MONGODB_URI='mongodb://localhost:27017/app'{{ end }} make run
+CONFIG_PATH=configs/config.{{ .Recipe.Configuration.Format }} APP_ENV=development SERVER_PORT={{ .Recipe.Server.Port }} LOGGING_FORMAT={{ .Recipe.Logging.Format }}{{ if hasDatabase "postgres" }} DATABASE_POSTGRES_USER_NAME=postgres DATABASE_POSTGRES_PASSWORD=postgres DATABASE_POSTGRES_HOST=localhost:5432 DATABASE_POSTGRES_DATABASE=app{{ end }}{{ if hasDatabase "mysql" }} DATABASE_MYSQL_USER_NAME=root DATABASE_MYSQL_PASSWORD=root DATABASE_MYSQL_HOST=localhost:3306 DATABASE_MYSQL_DATABASE=app{{ end }}{{ if hasDatabase "sqlite" }} DATABASE_SQLITE_PATH=app.db DATABASE_SQLITE_FOREIGN_KEYS=true{{ end }}{{ if and (anySQLDatabaseEnabled) (sqlMigrations .Recipe.Database.Migrations) }} DATABASE_MIGRATIONS='file://scripts/migrations'{{ end }}{{ if hasDatabase "redis" }} DATABASE_REDIS_HOST=localhost:6379 DATABASE_REDIS_DATABASE=0{{ end }}{{ if hasDatabase "mongodb" }} DATABASE_MONGODB_HOST=localhost:27017 DATABASE_MONGODB_DATABASE=app{{ end }} make run
 ```
 {{ end }}
 {{ if and (hasDatabase "redis") (not (anySQLDatabaseEnabled)) }}

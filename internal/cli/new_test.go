@@ -24,6 +24,7 @@ func (s *CliTestSuite) TestNewCommand() {
 			"--compose",
 			"--github-actions",
 			"--gitlab-ci",
+			"--azure-pipelines",
 			"--health",
 			"--readiness",
 			"--out", outDir,
@@ -38,9 +39,11 @@ func (s *CliTestSuite) TestNewCommand() {
 		s.Require().Contains(out, "make test")
 		s.Require().Contains(out, "make run")
 		s.Require().FileExists(filepath.Join(outDir, "go.mod"))
+		s.Require().FileExists(filepath.Join(outDir, ".gitignore"))
 		s.Require().FileExists(filepath.Join(outDir, "configs", "config.yaml"))
 		s.Require().FileExists(filepath.Join(outDir, ".github", "workflows", "test.yml"))
 		s.Require().FileExists(filepath.Join(outDir, ".gitlab-ci.yml"))
+		s.Require().FileExists(filepath.Join(outDir, "azure-pipelines.yml"))
 		s.Require().FileExists(filepath.Join(outDir, "deployments", "docker-compose.yml"))
 	})
 
@@ -87,6 +90,7 @@ func (s *CliTestSuite) TestNewCommand() {
 
 		s.Require().NotNil(cmd.Flags().Lookup("preset"))
 		s.Require().NotNil(cmd.Flags().Lookup("recipe"))
+		s.Require().NotNil(cmd.Flags().Lookup("azure-pipelines"))
 		s.Require().NotNil(cmd.Flags().Lookup("overwrite"))
 		s.Require().Contains(cmd.Long, "opens the TUI wizard")
 	})
@@ -124,5 +128,6 @@ func (s *CliTestSuite) TestNewCommand() {
 		s.Require().NoError(err)
 		s.Require().Contains(out, "cd orders-cli")
 		s.Require().FileExists(filepath.Join(workingDir, "orders-cli", "README.md"))
+		s.Require().FileExists(filepath.Join(workingDir, "orders-cli", ".gitignore"))
 	})
 }

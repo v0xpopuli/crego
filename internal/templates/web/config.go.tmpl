@@ -56,34 +56,54 @@ type (
 
 {{ if hasDatabase "postgres" -}}
 	PostgresConfig struct {
-		URL        string {{ configTag "url" }}
-		Migrations string {{ configTag "migrations" }}
+		UserName           string {{ configTag "user-name" }}
+		Password           string {{ configTag "password" }}
+		Host               string {{ configTag "host" }}
+		Database           string {{ configTag "database" }}
+		SSLMode            string {{ configTag "ssl-mode" }}
+		Migrations         string {{ configTag "migrations" }}
+		MaxOpenConnections int    {{ configTag "max-open-connections" }}
+		MaxIdleConnections int    {{ configTag "max-idle-connections" }}
 	}
 
 {{ end -}}
 {{ if hasDatabase "mysql" -}}
 	MySQLConfig struct {
-		URL        string {{ configTag "url" }}
-		Migrations string {{ configTag "migrations" }}
+		UserName           string {{ configTag "user-name" }}
+		Password           string {{ configTag "password" }}
+		Host               string {{ configTag "host" }}
+		Database           string {{ configTag "database" }}
+		ParseTime          bool   {{ configTag "parse-time" }}
+		Migrations         string {{ configTag "migrations" }}
+		MaxOpenConnections int    {{ configTag "max-open-connections" }}
+		MaxIdleConnections int    {{ configTag "max-idle-connections" }}
 	}
 
 {{ end -}}
 {{ if hasDatabase "sqlite" -}}
 	SQLiteConfig struct {
-		URL        string {{ configTag "url" }}
-		Migrations string {{ configTag "migrations" }}
+		Path               string {{ configTag "path" }}
+		ForeignKeys        bool   {{ configTag "foreign-keys" }}
+		Migrations         string {{ configTag "migrations" }}
+		MaxOpenConnections int    {{ configTag "max-open-connections" }}
+		MaxIdleConnections int    {{ configTag "max-idle-connections" }}
 	}
 
 {{ end -}}
 {{ if hasDatabase "redis" -}}
 	RedisConfig struct {
-		Address string {{ configTag "address" }}
+		Host     string {{ configTag "host" }}
+		Password string {{ configTag "password" }}
+		Database int    {{ configTag "database" }}
 	}
 
 {{ end -}}
 {{ if hasDatabase "mongodb" -}}
 	MongoDBConfig struct {
-		URI string {{ configTag "uri" }}
+		UserName string {{ configTag "user-name" }}
+		Password string {{ configTag "password" }}
+		Host     string {{ configTag "host" }}
+		Database string {{ configTag "database" }}
 	}
 
 {{ end -}}
@@ -158,26 +178,46 @@ func defaultConfig() Config {
 		},
 {{ if anyDatabaseEnabled }}		Database: DatabaseConfig{
 {{ if hasDatabase "postgres" }}			Postgres: PostgresConfig{
-				URL:        "postgres://postgres:postgres@localhost:5432/app?sslmode=disable",
-				Migrations: {{ if sqlMigrations .Recipe.Database.Migrations }}"file://scripts/migrations"{{ else }}""{{ end }},
+				UserName:           "postgres",
+				Password:           "postgres",
+				Host:               "localhost:5432",
+				Database:           "app",
+				SSLMode:            "",
+				Migrations:         {{ if sqlMigrations .Recipe.Database.Migrations }}"file://scripts/migrations"{{ else }}""{{ end }},
+				MaxOpenConnections: 10,
+				MaxIdleConnections: 5,
 			},
 {{ end -}}
 {{ if hasDatabase "mysql" }}			MySQL: MySQLConfig{
-				URL:        "mysql://root:root@tcp(localhost:3306)/app?parseTime=true",
-				Migrations: {{ if sqlMigrations .Recipe.Database.Migrations }}"file://scripts/migrations"{{ else }}""{{ end }},
+				UserName:           "root",
+				Password:           "root",
+				Host:               "localhost:3306",
+				Database:           "app",
+				ParseTime:          true,
+				Migrations:         {{ if sqlMigrations .Recipe.Database.Migrations }}"file://scripts/migrations"{{ else }}""{{ end }},
+				MaxOpenConnections: 10,
+				MaxIdleConnections: 5,
 			},
 {{ end -}}
 {{ if hasDatabase "sqlite" }}			SQLite: SQLiteConfig{
-				URL:        "file:app.db?_foreign_keys=on",
-				Migrations: {{ if sqlMigrations .Recipe.Database.Migrations }}"file://scripts/migrations"{{ else }}""{{ end }},
+				Path:               "app.db",
+				ForeignKeys:        true,
+				Migrations:         {{ if sqlMigrations .Recipe.Database.Migrations }}"file://scripts/migrations"{{ else }}""{{ end }},
+				MaxOpenConnections: 1,
+				MaxIdleConnections: 1,
 			},
 {{ end -}}
 {{ if hasDatabase "redis" }}			Redis: RedisConfig{
-				Address: "localhost:6379",
+				Host:     "localhost:6379",
+				Password: "",
+				Database: 0,
 			},
 {{ end -}}
 {{ if hasDatabase "mongodb" }}			MongoDB: MongoDBConfig{
-				URI: "mongodb://localhost:27017/app",
+				UserName: "",
+				Password: "",
+				Host:     "localhost:27017",
+				Database: "app",
 			},
 {{ end -}}
 		},
@@ -252,18 +292,95 @@ func applyEnvOverrides(cfg *Config) error {
 	}
 {{ end -}}
 {{ if hasDatabase "postgres" }}
-	if value := os.Getenv("DATABASE_POSTGRES_URL"); value != "" {
-		cfg.Database.Postgres.URL = value
+	if value := os.Getenv("DATABASE_POSTGRES_USER_NAME"); value != "" {
+		cfg.Database.Postgres.UserName = value
+	}
+	if value := os.Getenv("DATABASE_POSTGRES_PASSWORD"); value != "" {
+		cfg.Database.Postgres.Password = value
+	}
+	if value := os.Getenv("DATABASE_POSTGRES_HOST"); value != "" {
+		cfg.Database.Postgres.Host = value
+	}
+	if value := os.Getenv("DATABASE_POSTGRES_DATABASE"); value != "" {
+		cfg.Database.Postgres.Database = value
+	}
+	if value := os.Getenv("DATABASE_POSTGRES_SSL_MODE"); value != "" {
+		cfg.Database.Postgres.SSLMode = value
+	}
+	if value := os.Getenv("DATABASE_POSTGRES_MAX_OPEN_CONNECTIONS"); value != "" {
+		maxOpenConnections, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("parse DATABASE_POSTGRES_MAX_OPEN_CONNECTIONS: %w", err)
+		}
+		cfg.Database.Postgres.MaxOpenConnections = maxOpenConnections
+	}
+	if value := os.Getenv("DATABASE_POSTGRES_MAX_IDLE_CONNECTIONS"); value != "" {
+		maxIdleConnections, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("parse DATABASE_POSTGRES_MAX_IDLE_CONNECTIONS: %w", err)
+		}
+		cfg.Database.Postgres.MaxIdleConnections = maxIdleConnections
 	}
 {{ end -}}
 {{ if hasDatabase "mysql" }}
-	if value := os.Getenv("DATABASE_MYSQL_URL"); value != "" {
-		cfg.Database.MySQL.URL = value
+	if value := os.Getenv("DATABASE_MYSQL_USER_NAME"); value != "" {
+		cfg.Database.MySQL.UserName = value
+	}
+	if value := os.Getenv("DATABASE_MYSQL_PASSWORD"); value != "" {
+		cfg.Database.MySQL.Password = value
+	}
+	if value := os.Getenv("DATABASE_MYSQL_HOST"); value != "" {
+		cfg.Database.MySQL.Host = value
+	}
+	if value := os.Getenv("DATABASE_MYSQL_DATABASE"); value != "" {
+		cfg.Database.MySQL.Database = value
+	}
+	if value := os.Getenv("DATABASE_MYSQL_PARSE_TIME"); value != "" {
+		parseTime, err := strconv.ParseBool(value)
+		if err != nil {
+			return fmt.Errorf("parse DATABASE_MYSQL_PARSE_TIME: %w", err)
+		}
+		cfg.Database.MySQL.ParseTime = parseTime
+	}
+	if value := os.Getenv("DATABASE_MYSQL_MAX_OPEN_CONNECTIONS"); value != "" {
+		maxOpenConnections, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("parse DATABASE_MYSQL_MAX_OPEN_CONNECTIONS: %w", err)
+		}
+		cfg.Database.MySQL.MaxOpenConnections = maxOpenConnections
+	}
+	if value := os.Getenv("DATABASE_MYSQL_MAX_IDLE_CONNECTIONS"); value != "" {
+		maxIdleConnections, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("parse DATABASE_MYSQL_MAX_IDLE_CONNECTIONS: %w", err)
+		}
+		cfg.Database.MySQL.MaxIdleConnections = maxIdleConnections
 	}
 {{ end -}}
 {{ if hasDatabase "sqlite" }}
-	if value := os.Getenv("DATABASE_SQLITE_URL"); value != "" {
-		cfg.Database.SQLite.URL = value
+	if value := os.Getenv("DATABASE_SQLITE_PATH"); value != "" {
+		cfg.Database.SQLite.Path = value
+	}
+	if value := os.Getenv("DATABASE_SQLITE_FOREIGN_KEYS"); value != "" {
+		foreignKeys, err := strconv.ParseBool(value)
+		if err != nil {
+			return fmt.Errorf("parse DATABASE_SQLITE_FOREIGN_KEYS: %w", err)
+		}
+		cfg.Database.SQLite.ForeignKeys = foreignKeys
+	}
+	if value := os.Getenv("DATABASE_SQLITE_MAX_OPEN_CONNECTIONS"); value != "" {
+		maxOpenConnections, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("parse DATABASE_SQLITE_MAX_OPEN_CONNECTIONS: %w", err)
+		}
+		cfg.Database.SQLite.MaxOpenConnections = maxOpenConnections
+	}
+	if value := os.Getenv("DATABASE_SQLITE_MAX_IDLE_CONNECTIONS"); value != "" {
+		maxIdleConnections, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("parse DATABASE_SQLITE_MAX_IDLE_CONNECTIONS: %w", err)
+		}
+		cfg.Database.SQLite.MaxIdleConnections = maxIdleConnections
 	}
 {{ end -}}
 {{ if anySQLDatabaseEnabled }}
@@ -279,13 +396,32 @@ func applyEnvOverrides(cfg *Config) error {
 {{ end -}}
 {{ end -}}
 {{ if hasDatabase "redis" }}
-	if value := os.Getenv("DATABASE_REDIS_ADDRESS"); value != "" {
-		cfg.Database.Redis.Address = value
+	if value := os.Getenv("DATABASE_REDIS_HOST"); value != "" {
+		cfg.Database.Redis.Host = value
+	}
+	if value := os.Getenv("DATABASE_REDIS_PASSWORD"); value != "" {
+		cfg.Database.Redis.Password = value
+	}
+	if value := os.Getenv("DATABASE_REDIS_DATABASE"); value != "" {
+		database, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("parse DATABASE_REDIS_DATABASE: %w", err)
+		}
+		cfg.Database.Redis.Database = database
 	}
 {{ end -}}
 {{ if hasDatabase "mongodb" }}
-	if value := os.Getenv("DATABASE_MONGODB_URI"); value != "" {
-		cfg.Database.MongoDB.URI = value
+	if value := os.Getenv("DATABASE_MONGODB_USER_NAME"); value != "" {
+		cfg.Database.MongoDB.UserName = value
+	}
+	if value := os.Getenv("DATABASE_MONGODB_PASSWORD"); value != "" {
+		cfg.Database.MongoDB.Password = value
+	}
+	if value := os.Getenv("DATABASE_MONGODB_HOST"); value != "" {
+		cfg.Database.MongoDB.Host = value
+	}
+	if value := os.Getenv("DATABASE_MONGODB_DATABASE"); value != "" {
+		cfg.Database.MongoDB.Database = value
 	}
 {{ end -}}
 	return nil
@@ -319,18 +455,48 @@ func validateConfig(cfg Config) error {
 	}
 {{ end -}}
 {{ if hasDatabase "postgres" }}
-	if cfg.Database.Postgres.URL == "" {
-		return fmt.Errorf("database.postgres.url is required")
+	if cfg.Database.Postgres.UserName == "" {
+		return fmt.Errorf("database.postgres.user-name is required")
+	}
+	if cfg.Database.Postgres.Host == "" {
+		return fmt.Errorf("database.postgres.host is required")
+	}
+	if cfg.Database.Postgres.Database == "" {
+		return fmt.Errorf("database.postgres.database is required")
+	}
+	if cfg.Database.Postgres.MaxOpenConnections < 1 {
+		return fmt.Errorf("database.postgres.max-open-connections must be greater than zero")
+	}
+	if cfg.Database.Postgres.MaxIdleConnections < 0 {
+		return fmt.Errorf("database.postgres.max-idle-connections must be zero or greater")
 	}
 {{ end -}}
 {{ if hasDatabase "mysql" }}
-	if cfg.Database.MySQL.URL == "" {
-		return fmt.Errorf("database.mysql.url is required")
+	if cfg.Database.MySQL.UserName == "" {
+		return fmt.Errorf("database.mysql.user-name is required")
+	}
+	if cfg.Database.MySQL.Host == "" {
+		return fmt.Errorf("database.mysql.host is required")
+	}
+	if cfg.Database.MySQL.Database == "" {
+		return fmt.Errorf("database.mysql.database is required")
+	}
+	if cfg.Database.MySQL.MaxOpenConnections < 1 {
+		return fmt.Errorf("database.mysql.max-open-connections must be greater than zero")
+	}
+	if cfg.Database.MySQL.MaxIdleConnections < 0 {
+		return fmt.Errorf("database.mysql.max-idle-connections must be zero or greater")
 	}
 {{ end -}}
 {{ if hasDatabase "sqlite" }}
-	if cfg.Database.SQLite.URL == "" {
-		return fmt.Errorf("database.sqlite.url is required")
+	if cfg.Database.SQLite.Path == "" {
+		return fmt.Errorf("database.sqlite.path is required")
+	}
+	if cfg.Database.SQLite.MaxOpenConnections < 1 {
+		return fmt.Errorf("database.sqlite.max-open-connections must be greater than zero")
+	}
+	if cfg.Database.SQLite.MaxIdleConnections < 0 {
+		return fmt.Errorf("database.sqlite.max-idle-connections must be zero or greater")
 	}
 {{ end -}}
 {{ if anySQLDatabaseEnabled }}
@@ -350,13 +516,19 @@ func validateConfig(cfg Config) error {
 {{ end -}}
 {{ end -}}
 {{ if hasDatabase "redis" }}
-	if cfg.Database.Redis.Address == "" {
-		return fmt.Errorf("database.redis.address is required")
+	if cfg.Database.Redis.Host == "" {
+		return fmt.Errorf("database.redis.host is required")
+	}
+	if cfg.Database.Redis.Database < 0 {
+		return fmt.Errorf("database.redis.database must be zero or greater")
 	}
 {{ end -}}
 {{ if hasDatabase "mongodb" }}
-	if cfg.Database.MongoDB.URI == "" {
-		return fmt.Errorf("database.mongodb.uri is required")
+	if cfg.Database.MongoDB.Host == "" {
+		return fmt.Errorf("database.mongodb.host is required")
+	}
+	if cfg.Database.MongoDB.Database == "" {
+		return fmt.Errorf("database.mongodb.database is required")
 	}
 {{ end -}}
 	return nil

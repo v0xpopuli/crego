@@ -7,29 +7,46 @@ port = {{ .Recipe.Server.Port }}
 format = "{{ .Recipe.Logging.Format }}"
 {{ if hasDatabase "postgres" }}
 [database.postgres]
-url = "postgres://postgres:postgres@localhost:5432/app?sslmode=disable"
+user-name = "postgres"
+password = "postgres"
+host = "localhost:5432"
+database = "app"
+ssl-mode = ""
 {{ if sqlMigrations .Recipe.Database.Migrations }}migrations = "file://scripts/migrations"
-{{ end -}}
+{{ end }}max-open-connections = 10
+max-idle-connections = 5
 {{ end -}}
 {{ if hasDatabase "mysql" }}
 [database.mysql]
-url = "mysql://root:root@tcp(localhost:3306)/app?parseTime=true"
+user-name = "root"
+password = "root"
+host = "localhost:3306"
+database = "app"
+parse-time = true
 {{ if sqlMigrations .Recipe.Database.Migrations }}migrations = "file://scripts/migrations"
-{{ end -}}
+{{ end }}max-open-connections = 10
+max-idle-connections = 5
 {{ end -}}
 {{ if hasDatabase "sqlite" }}
 [database.sqlite]
-url = "file:app.db?_foreign_keys=on"
+path = "app.db"
+foreign-keys = true
 {{ if sqlMigrations .Recipe.Database.Migrations }}migrations = "file://scripts/migrations"
-{{ end -}}
+{{ end }}max-open-connections = 1
+max-idle-connections = 1
 {{ end -}}
 {{ if hasDatabase "redis" }}
 [database.redis]
-address = "localhost:6379"
+host = "localhost:6379"
+password = ""
+database = 0
 {{ end -}}
 {{ if hasDatabase "mongodb" }}
 [database.mongodb]
-uri = "mongodb://localhost:27017/app"
+user-name = ""
+password = ""
+host = "localhost:27017"
+database = "app"
 {{ end -}}
 {{ if schedulerEnabled }}
 [task_scheduler]

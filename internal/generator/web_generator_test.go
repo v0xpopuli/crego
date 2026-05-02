@@ -39,6 +39,7 @@ func (s *WebGeneratorTestSuite) TestGeneratesWebServiceMatrix() {
 			configFormat: recipe.ConfigurationFormatEnv,
 			logging:      recipe.LoggingFrameworkSlog,
 			expectedFiles: []string{
+				".gitignore",
 				"cmd/orders-api/main.go",
 				"internal/app/app.go",
 				"internal/app/config.go",
@@ -305,12 +306,16 @@ func (s *WebGeneratorTestSuite) TestGeneratesDatabaseMatrix() {
 				"Postgres PostgresConfig",
 				"type (",
 				"PostgresConfig struct",
-				`Migrations: "file://scripts/migrations"`,
+				`UserName:           "postgres"`,
+				`Host:               "localhost:5432"`,
+				`Migrations:         "file://scripts/migrations"`,
+				`MaxOpenConnections: 10`,
 			},
 			databaseFile: "internal/database/postgres.go",
 			expectedDatabase: []string{
 				`"github.com/example/orders-api/internal/config"`,
 				"cfg config.PostgresConfig",
+				"postgresAddress(cfg)",
 			},
 			absentDatabase: []string{
 				"type PostgresConfig struct",
@@ -347,15 +352,18 @@ func (s *WebGeneratorTestSuite) TestGeneratesDatabaseMatrix() {
 				"github.com/pressly/goose/v3",
 			},
 			expectedConfig: []string{
-				"mysql://root:root@tcp(localhost:3306)/app?parseTime=true",
 				"MySQL MySQLConfig",
 				"MySQLConfig struct",
-				`Migrations: "file://scripts/migrations"`,
+				`UserName:           "root"`,
+				`ParseTime:          true`,
+				`Migrations:         "file://scripts/migrations"`,
+				`MaxIdleConnections: 5`,
 			},
 			databaseFile: "internal/database/mysql.go",
 			expectedDatabase: []string{
 				`"github.com/example/orders-api/internal/config"`,
 				"cfg config.MySQLConfig",
+				"mysqlDSN(cfg)",
 			},
 			absentDatabase: []string{
 				"type MySQLConfig struct",
@@ -382,12 +390,13 @@ func (s *WebGeneratorTestSuite) TestGeneratesDatabaseMatrix() {
 				"github.com/golang-migrate/migrate/v4",
 				"go.mongodb.org/mongo-driver/v2",
 			},
-			expectedConfig: []string{"Redis RedisConfig", "RedisConfig struct"},
+			expectedConfig: []string{"Redis RedisConfig", "RedisConfig struct", `Host:     "localhost:6379"`, "Database: 0"},
 			absentConfig:   []string{"Postgres PostgresConfig", "MySQL MySQLConfig", "SQLite SQLiteConfig", "database.RedisConfig"},
 			databaseFile:   "internal/database/redis.go",
 			expectedDatabase: []string{
 				`"github.com/example/orders-api/internal/config"`,
 				"cfg config.RedisConfig",
+				"Addr:     cfg.Host",
 			},
 			absentDatabase: []string{
 				"type RedisConfig struct",
@@ -415,12 +424,13 @@ func (s *WebGeneratorTestSuite) TestGeneratesDatabaseMatrix() {
 				"github.com/golang-migrate/migrate/v4",
 				"github.com/redis/go-redis/v9",
 			},
-			expectedConfig: []string{"MongoDB MongoDBConfig", "MongoDBConfig struct"},
+			expectedConfig: []string{"MongoDB MongoDBConfig", "MongoDBConfig struct", `Host:     "localhost:27017"`, `Database: "app"`},
 			absentConfig:   []string{"Postgres PostgresConfig", "MySQL MySQLConfig", "SQLite SQLiteConfig", "database.MongoDBConfig"},
 			databaseFile:   "internal/database/mongodb.go",
 			expectedDatabase: []string{
 				`"github.com/example/orders-api/internal/config"`,
 				"cfg config.MongoDBConfig",
+				"mongoDBURI(cfg)",
 			},
 			absentDatabase: []string{
 				"type MongoDBConfig struct",

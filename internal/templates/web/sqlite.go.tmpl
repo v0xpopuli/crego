@@ -37,25 +37,23 @@ type SQLiteClient struct {
 }
 
 func NewSQLiteClient(ctx context.Context, cfg {{ if eq .Recipe.Layout.Style "minimal" }}SQLiteConfig{{ else }}config.SQLiteConfig{{ end }}, logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) (*SQLiteClient, error) {
-	if cfg.URL == "" {
-		return nil, fmt.Errorf("database_url is required")
-	}
+	address := sqliteDSN(cfg)
 {{ if eq .Recipe.Database.Framework "sql" }}
-	db, err := sql.Open("sqlite", cfg.URL)
+	db, err := sql.Open("sqlite", address)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite database: %w", err)
 	}
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(1)
+	db.SetMaxOpenConns(cfg.MaxOpenConnections)
+	db.SetMaxIdleConns(cfg.MaxIdleConnections)
 	db.SetConnMaxLifetime(30 * time.Minute)
-	client := &SQLiteClient{config: cfg, address: cfg.URL, logger: logger, DB: db}
+	client := &SQLiteClient{config: cfg, address: address, logger: logger, DB: db}
 	if err := client.Ping(ctx); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping sqlite database: %w", err)
 	}
 {{ end }}
 {{ if eq .Recipe.Database.Framework "gorm" }}
-	database, err := gorm.Open(sqlite.Open(cfg.URL), &gorm.Config{})
+	database, err := gorm.Open(sqlite.Open(address), &gorm.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite database: %w", err)
 	}
@@ -63,10 +61,10 @@ func NewSQLiteClient(ctx context.Context, cfg {{ if eq .Recipe.Layout.Style "min
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite sql database: %w", err)
 	}
-	sqlDB.SetMaxOpenConns(1)
-	sqlDB.SetMaxIdleConns(1)
+	sqlDB.SetMaxOpenConns(cfg.MaxOpenConnections)
+	sqlDB.SetMaxIdleConns(cfg.MaxIdleConnections)
 	sqlDB.SetConnMaxLifetime(30 * time.Minute)
-	client := &SQLiteClient{config: cfg, address: cfg.URL, logger: logger, Database: database, sqlDB: sqlDB}
+	client := &SQLiteClient{config: cfg, address: address, logger: logger, Database: database, sqlDB: sqlDB}
 	if err := client.Ping(ctx); err != nil {
 		_ = sqlDB.Close()
 		return nil, fmt.Errorf("ping sqlite database: %w", err)
@@ -103,4 +101,12 @@ func (c *SQLiteClient) Shutdown(ctx context.Context) error {
 		c.logger.Info("database connection closed", "driver", "sqlite")
 	}
 	return nil
+}
+
+func sqliteDSN(cfg {{ if eq .Recipe.Layout.Style "minimal" }}SQLiteConfig{{ else }}config.SQLiteConfig{{ end }}) string {
+	address := "file:" + cfg.Path
+	if cfg.ForeignKeys {
+		address += "?_foreign_keys=on"
+	}
+	return address
 }

@@ -63,6 +63,7 @@ func defaultComponents() []Component {
 			Files: []TemplateFile{
 				{Source: "web/go.mod.tmpl", Target: "go.mod"},
 				{Source: "web/README.md.tmpl", Target: "README.md"},
+				{Source: "project/gitignore.tmpl", Target: ".gitignore"},
 				{Source: "web/Makefile.tmpl", Target: "Makefile"},
 				{Source: "web/main.go.tmpl", Target: "cmd/{{ .ProjectName }}/main.go"},
 				{Source: "web/app.go.tmpl", Target: "internal/app/app.go"},
@@ -81,7 +82,10 @@ func defaultComponents() []Component {
 			Category:    CategoryProject,
 			Name:        "CLI project",
 			Description: "Command-line application project scaffold.",
-			Files:       []TemplateFile{{Source: "project/README.md.tmpl", Target: "README.md"}},
+			Files: []TemplateFile{
+				{Source: "project/README.md.tmpl", Target: "README.md"},
+				{Source: "project/gitignore.tmpl", Target: ".gitignore"},
+			},
 		},
 		{
 			ID:          IDLayoutMinimal,
