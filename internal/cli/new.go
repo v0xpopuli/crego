@@ -32,6 +32,7 @@ type newOptions struct {
 	compose        bool
 	githubActions  bool
 	gitlabCI       bool
+	azurePipelines bool
 	health         bool
 	readiness      bool
 	outDir         string
@@ -77,6 +78,7 @@ plan, and can generate the project immediately or save the recipe only.`,
 	cmd.Flags().BoolVar(&opts.compose, "compose", false, "Include Docker Compose")
 	cmd.Flags().BoolVar(&opts.githubActions, "github-actions", false, "Include GitHub Actions workflow")
 	cmd.Flags().BoolVar(&opts.gitlabCI, "gitlab-ci", false, "Include GitLab CI pipeline")
+	cmd.Flags().BoolVar(&opts.azurePipelines, "azure-pipelines", false, "Include Azure Pipelines workflow")
 	cmd.Flags().BoolVar(&opts.health, "health", false, "Include health endpoint")
 	cmd.Flags().BoolVar(&opts.readiness, "readiness", false, "Include readiness endpoint")
 	cmd.Flags().StringVarP(&opts.outDir, "out", "o", "", "Directory to write generated project files")
@@ -217,8 +219,9 @@ func recipeFromNewOptions(module string, opts *newOptions) *recipe.Recipe {
 			Compose: opts.compose,
 		},
 		CI: recipe.CIConfig{
-			GitHubActions: opts.githubActions,
-			GitLabCI:      opts.gitlabCI,
+			GitHubActions:  opts.githubActions,
+			GitLabCI:       opts.gitlabCI,
+			AzurePipelines: opts.azurePipelines,
 		},
 	}
 	if r.Project.Type == "" {

@@ -8,7 +8,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strings"
 	"time"
 
 {{ if eq .Recipe.Database.Framework "sql" }}
@@ -38,17 +37,14 @@ type MySQLClient struct {
 }
 
 func NewMySQLClient(ctx context.Context, cfg {{ if eq .Recipe.Layout.Style "minimal" }}MySQLConfig{{ else }}config.MySQLConfig{{ end }}, logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) (*MySQLClient, error) {
-	if cfg.URL == "" {
-		return nil, fmt.Errorf("database_url is required")
-	}
-	address := mysqlDSN(cfg.URL)
+	address := mysqlDSN(cfg)
 {{ if eq .Recipe.Database.Framework "sql" }}
 	db, err := sql.Open("mysql", address)
 	if err != nil {
 		return nil, fmt.Errorf("open mysql database: %w", err)
 	}
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(5)
+	db.SetMaxOpenConns(cfg.MaxOpenConnections)
+	db.SetMaxIdleConns(cfg.MaxIdleConnections)
 	db.SetConnMaxLifetime(30 * time.Minute)
 	client := &MySQLClient{config: cfg, address: address, logger: logger, DB: db}
 	if err := client.Ping(ctx); err != nil {
@@ -65,8 +61,8 @@ func NewMySQLClient(ctx context.Context, cfg {{ if eq .Recipe.Layout.Style "mini
 	if err != nil {
 		return nil, fmt.Errorf("open mysql sql database: %w", err)
 	}
-	sqlDB.SetMaxOpenConns(10)
-	sqlDB.SetMaxIdleConns(5)
+	sqlDB.SetMaxOpenConns(cfg.MaxOpenConnections)
+	sqlDB.SetMaxIdleConns(cfg.MaxIdleConnections)
 	sqlDB.SetConnMaxLifetime(30 * time.Minute)
 	client := &MySQLClient{config: cfg, address: address, logger: logger, Database: database, sqlDB: sqlDB}
 	if err := client.Ping(ctx); err != nil {
@@ -107,6 +103,10 @@ func (c *MySQLClient) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-func mysqlDSN(value string) string {
-	return strings.TrimPrefix(value, "mysql://")
+func mysqlDSN(cfg {{ if eq .Recipe.Layout.Style "minimal" }}MySQLConfig{{ else }}config.MySQLConfig{{ end }}) string {
+	address := fmt.Sprintf("%s:%s@tcp(%s)/%s", cfg.UserName, cfg.Password, cfg.Host, cfg.Database)
+	if cfg.ParseTime {
+		address += "?parseTime=true"
+	}
+	return address
 }

@@ -47,41 +47,39 @@ type PostgresClient struct {
 }
 
 func NewPostgresClient(ctx context.Context, cfg {{ if eq .Recipe.Layout.Style "minimal" }}PostgresConfig{{ else }}config.PostgresConfig{{ end }}, logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) (*PostgresClient, error) {
-	if cfg.URL == "" {
-		return nil, fmt.Errorf("database_url is required")
-	}
+	address := postgresAddress(cfg)
 {{ if eq .Recipe.Database.Framework "pgx" }}
-	poolConfig, err := pgxpool.ParseConfig(cfg.URL)
+	poolConfig, err := pgxpool.ParseConfig(address)
 	if err != nil {
-		return nil, fmt.Errorf("parse postgres database_url: %w", err)
+		return nil, fmt.Errorf("parse postgres address: %w", err)
 	}
-	poolConfig.MaxConns = 10
+	poolConfig.MaxConns = int32(cfg.MaxOpenConnections)
 	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		return nil, fmt.Errorf("open postgres database: %w", err)
 	}
-	client := &PostgresClient{config: cfg, address: cfg.URL, logger: logger, Pool: pool}
+	client := &PostgresClient{config: cfg, address: address, logger: logger, Pool: pool}
 	if err := client.Ping(ctx); err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("ping postgres database: %w", err)
 	}
 {{ end }}
 {{ if eq .Recipe.Database.Framework "sql" }}
-	db, err := sql.Open("pgx", cfg.URL)
+	db, err := sql.Open("pgx", address)
 	if err != nil {
 		return nil, fmt.Errorf("open postgres database: %w", err)
 	}
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(5)
+	db.SetMaxOpenConns(cfg.MaxOpenConnections)
+	db.SetMaxIdleConns(cfg.MaxIdleConnections)
 	db.SetConnMaxLifetime(30 * time.Minute)
-	client := &PostgresClient{config: cfg, address: cfg.URL, logger: logger, DB: db}
+	client := &PostgresClient{config: cfg, address: address, logger: logger, DB: db}
 	if err := client.Ping(ctx); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping postgres database: %w", err)
 	}
 {{ end }}
 {{ if eq .Recipe.Database.Framework "gorm" }}
-	database, err := gorm.Open(postgres.Open(cfg.URL), &gorm.Config{})
+	database, err := gorm.Open(postgres.Open(address), &gorm.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("open postgres database: %w", err)
 	}
@@ -89,10 +87,10 @@ func NewPostgresClient(ctx context.Context, cfg {{ if eq .Recipe.Layout.Style "m
 	if err != nil {
 		return nil, fmt.Errorf("open postgres sql database: %w", err)
 	}
-	sqlDB.SetMaxOpenConns(10)
-	sqlDB.SetMaxIdleConns(5)
+	sqlDB.SetMaxOpenConns(cfg.MaxOpenConnections)
+	sqlDB.SetMaxIdleConns(cfg.MaxIdleConnections)
 	sqlDB.SetConnMaxLifetime(30 * time.Minute)
-	client := &PostgresClient{config: cfg, address: cfg.URL, logger: logger, Database: database, sqlDB: sqlDB}
+	client := &PostgresClient{config: cfg, address: address, logger: logger, Database: database, sqlDB: sqlDB}
 	if err := client.Ping(ctx); err != nil {
 		_ = sqlDB.Close()
 		return nil, fmt.Errorf("ping postgres database: %w", err)
@@ -135,4 +133,12 @@ func (c *PostgresClient) Shutdown(ctx context.Context) error {
 		c.logger.Info("database connection closed", "driver", "postgres")
 	}
 	return nil
+}
+
+func postgresAddress(cfg {{ if eq .Recipe.Layout.Style "minimal" }}PostgresConfig{{ else }}config.PostgresConfig{{ end }}) string {
+	address := fmt.Sprintf("postgres://%s:%s@%s/%s", cfg.UserName, cfg.Password, cfg.Host, cfg.Database)
+	if cfg.SSLMode != "" {
+		address += "?sslmode=" + cfg.SSLMode
+	}
+	return address
 }

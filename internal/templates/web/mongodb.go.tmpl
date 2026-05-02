@@ -24,10 +24,10 @@ type MongoDBClient struct {
 }
 
 func NewMongoDBClient(ctx context.Context, cfg {{ if eq .Recipe.Layout.Style "minimal" }}MongoDBConfig{{ else }}config.MongoDBConfig{{ end }}, logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) (*MongoDBClient, error) {
-	if cfg.URI == "" {
-		return nil, fmt.Errorf("mongodb_uri is required")
+	if cfg.Host == "" {
+		return nil, fmt.Errorf("mongodb_host is required")
 	}
-	client, err := mongo.Connect(options.Client().ApplyURI(cfg.URI))
+	client, err := mongo.Connect(options.Client().ApplyURI(mongoDBURI(cfg)))
 	if err != nil {
 		return nil, fmt.Errorf("open mongodb: %w", err)
 	}
@@ -54,4 +54,12 @@ func (c *MongoDBClient) Shutdown(ctx context.Context) error {
 		c.logger.Info("database connection closed", "driver", "mongodb")
 	}
 	return nil
+}
+
+func mongoDBURI(cfg {{ if eq .Recipe.Layout.Style "minimal" }}MongoDBConfig{{ else }}config.MongoDBConfig{{ end }}) string {
+	credentials := ""
+	if cfg.UserName != "" {
+		credentials = cfg.UserName + ":" + cfg.Password + "@"
+	}
+	return fmt.Sprintf("mongodb://%s%s/%s", credentials, cfg.Host, cfg.Database)
 }

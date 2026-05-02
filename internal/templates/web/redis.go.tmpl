@@ -22,11 +22,13 @@ type RedisClient struct {
 }
 
 func NewRedisClient(ctx context.Context, cfg {{ if eq .Recipe.Layout.Style "minimal" }}RedisConfig{{ else }}config.RedisConfig{{ end }}, logger {{ if eq .Recipe.Layout.Style "minimal" }}Logger{{ else }}logging.Logger{{ end }}) (*RedisClient, error) {
-	if cfg.Address == "" {
-		return nil, fmt.Errorf("redis_address is required")
+	if cfg.Host == "" {
+		return nil, fmt.Errorf("redis_host is required")
 	}
 	client := redis.NewClient(&redis.Options{
-		Addr: cfg.Address,
+		Addr:     cfg.Host,
+		Password: cfg.Password,
+		DB:       cfg.Database,
 	})
 	result := &RedisClient{config: cfg, logger: logger, Client: client}
 	if err := result.Ping(ctx); err != nil {
@@ -34,7 +36,7 @@ func NewRedisClient(ctx context.Context, cfg {{ if eq .Recipe.Layout.Style "mini
 		return nil, fmt.Errorf("ping redis: %w", err)
 	}
 	if logger != nil {
-		logger.Info("database connected", "driver", "redis", "address", cfg.Address)
+		logger.Info("database connected", "driver", "redis", "host", cfg.Host)
 	}
 	return result, nil
 }

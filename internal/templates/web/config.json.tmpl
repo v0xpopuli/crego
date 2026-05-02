@@ -8,26 +8,46 @@
   }{{ if anyDatabaseEnabled }},
   "database": {
 {{ if hasDatabase "postgres" }}    "postgres": {
-      "url": "postgres://postgres:postgres@localhost:5432/app?sslmode=disable"{{ if sqlMigrations .Recipe.Database.Migrations }},
-      "migrations": "file://scripts/migrations"{{ end }}
+      "user-name": "postgres",
+      "password": "postgres",
+      "host": "localhost:5432",
+      "database": "app",
+      "ssl-mode": ""{{ if sqlMigrations .Recipe.Database.Migrations }},
+      "migrations": "file://scripts/migrations"{{ end }},
+      "max-open-connections": 10,
+      "max-idle-connections": 5
     }{{ if or (hasDatabase "mysql") (hasDatabase "sqlite") (hasDatabase "redis") (hasDatabase "mongodb") }},{{ end }}
 {{ end -}}
 {{ if hasDatabase "mysql" }}    "mysql": {
-      "url": "mysql://root:root@tcp(localhost:3306)/app?parseTime=true"{{ if sqlMigrations .Recipe.Database.Migrations }},
-      "migrations": "file://scripts/migrations"{{ end }}
+      "user-name": "root",
+      "password": "root",
+      "host": "localhost:3306",
+      "database": "app",
+      "parse-time": true{{ if sqlMigrations .Recipe.Database.Migrations }},
+      "migrations": "file://scripts/migrations"{{ end }},
+      "max-open-connections": 10,
+      "max-idle-connections": 5
     }{{ if or (hasDatabase "sqlite") (hasDatabase "redis") (hasDatabase "mongodb") }},{{ end }}
 {{ end -}}
 {{ if hasDatabase "sqlite" }}    "sqlite": {
-      "url": "file:app.db?_foreign_keys=on"{{ if sqlMigrations .Recipe.Database.Migrations }},
-      "migrations": "file://scripts/migrations"{{ end }}
+      "path": "app.db",
+      "foreign-keys": true{{ if sqlMigrations .Recipe.Database.Migrations }},
+      "migrations": "file://scripts/migrations"{{ end }},
+      "max-open-connections": 1,
+      "max-idle-connections": 1
     }{{ if or (hasDatabase "redis") (hasDatabase "mongodb") }},{{ end }}
 {{ end -}}
 {{ if hasDatabase "redis" }}    "redis": {
-      "address": "localhost:6379"
+      "host": "localhost:6379",
+      "password": "",
+      "database": 0
     }{{ if hasDatabase "mongodb" }},{{ end }}
 {{ end -}}
 {{ if hasDatabase "mongodb" }}    "mongodb": {
-      "uri": "mongodb://localhost:27017/app"
+      "user-name": "",
+      "password": "",
+      "host": "localhost:27017",
+      "database": "app"
     }
 {{ end -}}
   }{{ end -}}{{ if schedulerEnabled }},
