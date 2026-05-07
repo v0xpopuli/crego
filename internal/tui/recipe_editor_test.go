@@ -29,7 +29,7 @@ func (s *RecipeEditorTestSuite) TestRecipePreservesIdentityAndEditsFullMatrix() 
 	state.ConfigurationFormat = recipe.ConfigurationFormatTOML
 	state.Logging = recipe.LoggingFrameworkLogrus
 	state.Server = recipe.ServerFrameworkFiber
-	state.Database = recipe.DatabaseDriverPostgres
+	state.SQLDatabase = recipe.DatabaseDriverPostgres
 	state.DatabaseFramework = recipe.DatabaseFrameworkGORM
 	state.Migrations = recipe.DatabaseMigrationsGoose
 	state.TaskScheduler = recipe.TaskSchedulerGocron
@@ -47,6 +47,82 @@ func (s *RecipeEditorTestSuite) TestRecipePreservesIdentityAndEditsFullMatrix() 
 	s.Require().Equal(recipe.DatabaseMigrationsGoose, r.Database.Migrations)
 	s.Require().Equal(recipe.TaskSchedulerGocron, r.TaskScheduler)
 	s.Require().True(r.CI.GitLabCI)
+}
+
+func (s *RecipeEditorTestSuite) TestRecipeCanSelectSQLAndMultipleNoSQLDatabases() {
+	state := NewRecipeEditorState(nil, RecipeEditorOptions{})
+	state.SQLDatabase = recipe.DatabaseDriverPostgres
+	state.DatabaseFramework = recipe.DatabaseFrameworkPGX
+	state.Migrations = recipe.DatabaseMigrationsMigrate
+	state.NoSQLDatabases[recipe.DatabaseDriverRedis] = true
+	state.NoSQLDatabases[recipe.DatabaseDriverMongoDB] = true
+
+	r := state.Recipe()
+
+	s.Require().NoError(recipe.Validate(r))
+	s.Require().Equal(recipe.DatabaseDriverPostgres, r.Database.SQL)
+	s.Require().Contains(r.Database.NoSQL, recipe.DatabaseDriverRedis)
+	s.Require().Contains(r.Database.NoSQL, recipe.DatabaseDriverMongoDB)
+	s.Require().Equal(recipe.DatabaseFrameworkPGX, r.Database.Framework)
+	s.Require().Equal(recipe.DatabaseMigrationsMigrate, r.Database.Migrations)
+
+	data, err := recipe.MarshalYAML(r)
+	s.Require().NoError(err)
+	output := string(data)
+	s.Require().Contains(output, "sql: postgres")
+	s.Require().Contains(output, "orm_framework: pgx")
+	s.Require().Contains(output, "migrations: migrate")
+	s.Require().Contains(output, "nosql:")
+	s.Require().Contains(output, "- redis")
+	s.Require().Contains(output, "- mongodb")
+}
+
+func (s *RecipeEditorTestSuite) TestRecipeEditorLoadsMultipleNoSQLDatabases() {
+	source := &recipe.Recipe{
+		Version: recipe.VersionV1,
+		Project: recipe.ProjectConfig{
+			Name:   "orders",
+			Module: "github.com/example/orders",
+			Type:   recipe.ProjectTypeWeb,
+		},
+		Database: recipe.DatabaseConfig{
+			SQL:          recipe.DatabaseDriverPostgres,
+			ORMFramework: recipe.DatabaseFrameworkPGX,
+			Migrations:   recipe.DatabaseMigrationsMigrate,
+			NoSQL: recipe.NoSQLDrivers{
+				recipe.DatabaseDriverRedis,
+				recipe.DatabaseDriverMongoDB,
+			},
+		},
+	}
+
+	state := NewRecipeEditorState(source, RecipeEditorOptions{})
+
+	s.Require().Equal(recipe.DatabaseDriverPostgres, state.SQLDatabase)
+	s.Require().True(state.NoSQLDatabases[recipe.DatabaseDriverRedis])
+	s.Require().True(state.NoSQLDatabases[recipe.DatabaseDriverMongoDB])
+	s.Require().Equal(recipe.DatabaseFrameworkPGX, state.DatabaseFramework)
+	s.Require().Equal(recipe.DatabaseMigrationsMigrate, state.Migrations)
+}
+
+func (s *RecipeEditorTestSuite) TestNoSQLTogglesDoNotDisableSQLFrameworkAndMigrations() {
+	state := NewRecipeEditorState(nil, RecipeEditorOptions{})
+	state.SQLDatabase = recipe.DatabaseDriverPostgres
+	state.DatabaseFramework = recipe.DatabaseFrameworkPGX
+	state.Migrations = recipe.DatabaseMigrationsMigrate
+	screen := newRecipeEditorScreen(NewStyles(nil, true), state)
+
+	screen.setField(editorRedis, true)
+	screen.setField(editorMongoDB, true)
+
+	r := state.Recipe()
+
+	s.Require().NoError(recipe.Validate(r))
+	s.Require().Equal(recipe.DatabaseDriverPostgres, r.Database.SQL)
+	s.Require().Equal(recipe.DatabaseFrameworkPGX, r.Database.Framework)
+	s.Require().Equal(recipe.DatabaseMigrationsMigrate, r.Database.Migrations)
+	s.Require().Contains(r.Database.NoSQL, recipe.DatabaseDriverRedis)
+	s.Require().Contains(r.Database.NoSQL, recipe.DatabaseDriverMongoDB)
 }
 
 func (s *RecipeEditorTestSuite) TestViewShowsLiveComponentsAndFiles() {
@@ -79,7 +155,7 @@ func (s *RecipeEditorTestSuite) TestViewShowsLiveComponentsAndFiles() {
 
 func (s *RecipeEditorTestSuite) TestChangingDatabaseBlocksInvalidFrameworkChoices() {
 	state := NewRecipeEditorState(nil, RecipeEditorOptions{})
-	state.Database = recipe.DatabaseDriverMySQL
+	state.SQLDatabase = recipe.DatabaseDriverMySQL
 	state.DatabaseFramework = recipe.DatabaseFrameworkPGX
 
 	state.applyDatabaseDefaults()
