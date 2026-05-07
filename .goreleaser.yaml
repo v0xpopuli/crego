@@ -29,7 +29,13 @@ archives:
   - id: crego
     ids:
       - crego
-    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
     format_overrides:
       - goos: windows
         formats:
@@ -52,3 +58,26 @@ release:
   github:
     owner: v0xpopuli
     name: crego
+
+brews:
+  - name: crego
+    ids:
+      - crego
+    repository:
+      owner: v0xpopuli
+      name: homebrew-tap
+      branch: master
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    commit_author:
+      name: v0xpopuli release bot
+      email: actions@github.com
+    commit_msg_template: "Update crego to {{ .Tag }}"
+    homepage: "https://github.com/v0xpopuli/crego"
+    description: "TUI-first Go project generator inspired by Spring Initializr and Powerlevel10k"
+    license: MIT
+    install: |
+      bin.install "crego"
+    test: |
+      assert_match "crego", shell_output("#{bin}/crego --help")
+      assert_match version.to_s, shell_output("#{bin}/crego version")
