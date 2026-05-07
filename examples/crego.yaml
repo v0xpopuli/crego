@@ -1,0 +1,44 @@
+version: v1
+
+project:
+  name: orders-web
+  module: github.com/acme/orders-web
+  type: web
+
+go:
+  version: "1.25"
+
+layout:
+  style: layered
+
+server:
+  framework: chi
+  port: 8080
+  graceful_shutdown: true
+
+configuration:
+  format: yaml
+
+logging:
+  framework: zap
+  format: json
+  request_logging: true
+
+database:
+  driver: postgres
+  framework: pgx
+  migrations: goose
+
+task_scheduler: gocron
+
+observability:
+  health: true
+  readiness: true
+
+deployment:
+  docker: true
+  compose: true
+
+ci:
+  github_actions: true
+  gitlab_ci: true

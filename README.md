@@ -1,95 +1,212 @@
 # crego
 
-`crego` is a TUI-first Go project generator inspired by Spring Initializr and Powerlevel10k.
+**Generate Go services you would actually deploy.**
 
-It is designed to be **interactive by default**, **deterministic by recipe**, and **scriptable for CI**.
+`crego` is a TUI-first Go project generator inspired by Spring Initializr and Powerlevel10k. It helps you create Go web services and CLI projects through an interactive terminal flow, deterministic recipe files, or scriptable commands.
+
+Crego-generated projects use common Go project layout patterns inspired by the widely used [`golang-standards/project-layout`](https://github.com/golang-standards/project-layout) repository. That repository is not an official Go standard; Crego treats it as a practical source of familiar conventions.
 
 ## Features
 
-- **TUI Flow**: Interactive project setup with sensible defaults.
-- **Deterministic Recipes**: Define your project once, generate it many times with predictable results.
-- **Component Registry**: Pick and choose components (server, database, logger, etc.) and let `crego` handle the wiring.
-- **Dry-run & Explain**: See what will be generated before touching the disk.
-- **Validation**: Strict recipe validation ensures compatibility and reduces errors.
+- TUI-first project setup with recipe preview.
+- Recipe-first generation with strict YAML validation.
+- Component registry for project type, layout, HTTP server, config, logging, database, migrations, scheduler, observability, deployment, and CI.
+- `explain` and `--dry-run` flows for reviewing generated output before writing files.
+- Safe generation defaults: no silent overwrites, validation before writes, injectable command output, and no `os.Exit` inside internal packages.
+- gocron-backed task scheduler generation for web services.
 
-## Installation
+## Installation From Source
 
-### Go Install
-
-```bash
-go install github.com/v0xpopuli/crego/cmd/crego@latest
-```
-
-Ensure your Go bin directory is in your `PATH`:
-
-```bash
-export PATH=$PATH:$(go env GOPATH)/bin
-```
-
-### Build from Source
-
-```bash
+```sh
 git clone https://github.com/v0xpopuli/crego.git
 cd crego
 make build
+./build/app/crego version
 ```
 
-The binary will be in `./build/app/crego`.
+For local development without installing:
 
-## Quick Start
-
-### 1. Initialize a recipe
-
-Create a starter recipe for a web project with PostgreSQL:
-
-```bash
-crego recipe init --preset web-postgres --module github.com/example/orders --out crego.yaml
+```sh
+go run ./cmd/crego version
+go run ./cmd/crego components list
 ```
 
-### 2. Validate the recipe
+## Basic Usage
 
-Ensure your recipe is correct:
-
-```bash
+```sh
+crego new
+crego new github.com/acme/orders-web
+crego configure --recipe web-postgres.yaml
+crego generate --recipe crego.yaml
 crego recipe validate crego.yaml
-```
-
-### 3. Preview generation
-
-See what files and components would be generated:
-
-```bash
 crego explain --recipe crego.yaml
+crego components list
 ```
 
-### 4. Generate the project
+## TUI Usage
 
-Write the generated files to the target directory:
+Run the default wizard:
 
-```bash
-crego generate --recipe crego.yaml --out ./orders-api
+```sh
+crego new
 ```
 
-## Core Concepts
+Or create a recipe interactively without generating immediately:
 
-### Recipes
+```sh
+crego configure --recipe web-postgres.yaml
+```
 
-Recipes are the deterministic contract for project generation. They are YAML files that describe the project metadata, layout, and selected components.
+The TUI collects project choices, shows the normalized recipe, resolves the generation plan, and can either save the recipe or generate the project.
 
-### Components
+## Recipe Usage
 
-Components are the building blocks of your project. They can be servers, database drivers, loggers, or custom hooks. `crego` resolves dependencies between components and renders the necessary code.
+Recipes are the deterministic contract for generation. They use YAML with snake_case field names.
 
-## Command Reference
+```sh
+crego recipe init --preset web-postgres --module github.com/acme/orders-web --out crego.yaml
+crego recipe validate crego.yaml
+crego explain --recipe crego.yaml
+crego generate --recipe crego.yaml --out ./orders-web
+```
 
-- `crego new`: Interactive project setup and immediate project generation.
-- `crego generate`: Generate a project from a recipe.
-- `crego explain`: Print a generation plan for a recipe without writing files.
-- `crego recipe init`: Create a starter recipe file.
-- `crego recipe validate`: Validate a recipe file.
-- `crego components list`: List available components.
-- `crego components show`: Show details for a specific component.
+### Example `crego.yaml`
+
+This is the public recipe shape for a layered Chi service with PostgreSQL, pgx, goose migrations, gocron, Docker, Compose, and both GitHub Actions and GitLab CI.
+
+```yaml
+version: v1
+
+project:
+  name: orders-web
+  module: github.com/acme/orders-web
+  type: web
+
+go:
+  version: "1.25"
+
+layout:
+  style: layered
+
+server:
+  framework: chi
+  port: 8080
+  graceful_shutdown: true
+
+configuration:
+  format: yaml
+
+logging:
+  framework: zap
+  format: json
+  request_logging: true
+
+database:
+  driver: postgres
+  framework: pgx
+  migrations: goose
+
+task_scheduler: gocron
+
+observability:
+  health: true
+  readiness: true
+
+deployment:
+  docker: true
+  compose: true
+
+ci:
+  github_actions: true
+  gitlab_ci: true
+```
+
+## Non-Interactive Usage
+
+Generate from a recipe without prompts:
+
+```sh
+crego generate --recipe crego.yaml --out ./orders-web --non-interactive
+```
+
+Or generate directly from flags:
+
+```sh
+crego new github.com/acme/orders-web \
+  --type web \
+  --layout layered \
+  --server chi \
+  --configuration yaml \
+  --logging zap \
+  --database postgres \
+  --framework pgx \
+  --migrations goose \
+  --docker \
+  --compose \
+  --github-actions \
+  --gitlab-ci \
+  --health \
+  --readiness \
+  --non-interactive
+```
+
+## Generated Project Structure
+
+A layered web service is generated with a familiar Go layout:
+
+```text
+orders-web/
+├── cmd/orders-web/main.go
+├── configs/config.yaml
+├── deployments/Dockerfile
+├── deployments/docker-compose.yml
+├── internal/app/app.go
+├── internal/config/config.go
+├── internal/database/postgres.go
+├── internal/database/migrations.go
+├── internal/logging/logger.go
+├── internal/scheduler/scheduler.go
+├── internal/scheduler/tasks/example_cleanup.go
+├── internal/server/server.go
+├── internal/server/routes.go
+├── internal/server/handler/health.go
+├── internal/server/handler/ready.go
+├── scripts/migrations/000001_init.sql
+├── .github/workflows/test.yml
+├── .gitlab-ci.yml
+├── go.mod
+├── Makefile
+└── README.md
+```
+
+## Supported Component Matrix
+
+| Category | Values |
+| --- | --- |
+| `project` | `web`, `cli` |
+| `layout` | `minimal`, `layered` |
+| `server` | `nethttp`, `chi`, `gin`, `echo`, `fiber` |
+| `configuration` | `env`, `yaml`, `json`, `toml` |
+| `logging` | `slog`, `zap`, `zerolog`, `logrus` |
+| `database` | `none`, `postgres`, `mysql`, `sqlite`, `redis`, `mongodb` |
+| `framework` | `pgx`, `sql`, `gorm` |
+| `migrations` | `none`, `goose`, `migrate` |
+| `task_scheduler` | `none`, `gocron` |
+| `observability` | `health`, `readiness` |
+| `deployment` | `docker`, `compose` |
+| `ci` | `github-actions`, `gitlab-ci` |
+
+## Development Commands
+
+```sh
+make build
+make tests
+go run ./cmd/crego components list
+go run ./cmd/crego recipe validate examples/crego.yaml
+```
+
+Per project policy, agents do not run tests automatically. Developers should run the commands locally and provide failures when fixes are needed.
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).
