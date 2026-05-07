@@ -4,5 +4,5 @@ import (
 	"embed"
 )
 
-//go:embed project/*.tmpl web/*.tmpl
+//go:embed cli/*.tmpl project/*.tmpl web/*.tmpl
 var FS embed.FS

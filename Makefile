@@ -24,5 +24,5 @@ clean:
 
 tests:
 	@echo "Running tests..."
-	@go test ./...
+	@go test ./... -v
 	@echo "Tests completed!"

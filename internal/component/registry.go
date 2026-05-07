@@ -83,8 +83,10 @@ func defaultComponents() []Component {
 			Name:        "CLI project",
 			Description: "Command-line application project scaffold.",
 			Files: []TemplateFile{
+				{Source: "cli/go.mod.tmpl", Target: "go.mod"},
 				{Source: "project/README.md.tmpl", Target: "README.md"},
 				{Source: "project/gitignore.tmpl", Target: ".gitignore"},
+				{Source: "cli/main.go.tmpl", Target: "cmd/{{ .ProjectName }}/main.go"},
 			},
 		},
 		{
