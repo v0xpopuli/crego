@@ -10,4 +10,3 @@ require (
 	gorm.io/driver/sqlite v1.6.0
 	github.com/pressly/goose/v3 v3.27.1
 )
-

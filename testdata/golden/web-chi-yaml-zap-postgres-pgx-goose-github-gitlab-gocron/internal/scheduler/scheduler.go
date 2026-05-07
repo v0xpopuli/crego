@@ -27,7 +27,7 @@ type (
 	}
 )
 
-func NewTaskScheduler(logger Logger, cfg config.TaskSchedulerConfig) (*TaskScheduler, error) {
+func NewTaskScheduler(logger logging.Logger, cfg config.TaskSchedulerConfig) (*TaskScheduler, error) {
 	_ = cfg
 	inner, err := gocron.NewScheduler()
 

@@ -8,4 +8,3 @@ require (
 	github.com/go-co-op/gocron/v2 v2.21.0
 	github.com/redis/go-redis/v9 v9.17.2
 )
-

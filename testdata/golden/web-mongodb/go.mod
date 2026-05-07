@@ -7,4 +7,3 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 	go.mongodb.org/mongo-driver/v2 v2.5.1
 )
-

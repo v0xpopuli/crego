@@ -1,0 +1,46 @@
+version: v1
+
+project:
+  name: orders-api
+  module: github.com/example/orders-api
+  type: web
+
+go:
+  version: "1.25"
+
+layout:
+  style: layered
+
+server:
+  framework: chi
+  port: 8080
+  graceful_shutdown: true
+
+configuration:
+  format: yaml
+
+database:
+  sql: postgres
+  orm_framework: pgx
+  migrations: goose
+  nosql: none
+
+task_scheduler: gocron
+
+logging:
+  framework: zap
+  format: json
+  request_logging: true
+
+observability:
+  health: true
+  readiness: true
+
+deployment:
+  docker: false
+  compose: false
+
+ci:
+  github_actions: false
+  gitlab_ci: false
+  azure_pipelines: false
