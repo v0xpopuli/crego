@@ -1,0 +1,27 @@
+# Go build output
+bin/
+dist/
+build/
+coverage.out
+*.test
+
+# Go workspace and vendored dependencies
+vendor/
+go.work
+go.work.sum
+
+# Local environment and generated config overrides
+.env
+.env.*
+*.local
+
+# IDEs and editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS metadata
+.DS_Store
+Thumbs.db

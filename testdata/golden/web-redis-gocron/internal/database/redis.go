@@ -1,0 +1,52 @@
+package database
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/redis/go-redis/v9"
+
+	"github.com/example/orders-api/internal/config"
+	"github.com/example/orders-api/internal/logging"
+)
+
+type RedisClient struct {
+	config config.RedisConfig
+	logger logging.Logger
+	Client *redis.Client
+}
+
+func NewRedisClient(ctx context.Context, cfg config.RedisConfig, logger logging.Logger) (*RedisClient, error) {
+	if cfg.Host == "" {
+		return nil, fmt.Errorf("redis_host is required")
+	}
+	client := redis.NewClient(&redis.Options{
+		Addr:     cfg.Host,
+		Password: cfg.Password,
+		DB:       cfg.Database,
+	})
+	result := &RedisClient{config: cfg, logger: logger, Client: client}
+	if err := result.Ping(ctx); err != nil {
+		_ = client.Close()
+		return nil, fmt.Errorf("ping redis: %w", err)
+	}
+	if logger != nil {
+		logger.Info("database connected", "driver", "redis", "host", cfg.Host)
+	}
+	return result, nil
+}
+
+func (c *RedisClient) Ping(ctx context.Context) error {
+	return c.Client.Ping(ctx).Err()
+}
+
+func (c *RedisClient) Shutdown(ctx context.Context) error {
+	_ = ctx
+	if err := c.Client.Close(); err != nil {
+		return err
+	}
+	if c.logger != nil {
+		c.logger.Info("database connection closed", "driver", "redis")
+	}
+	return nil
+}

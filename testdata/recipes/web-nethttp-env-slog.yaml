@@ -1,0 +1,44 @@
+version: v1
+
+project:
+  name: orders-api
+  module: github.com/example/orders-api
+  type: web
+
+go:
+  version: "1.25"
+
+layout:
+  style: minimal
+
+server:
+  framework: nethttp
+  port: 8080
+  graceful_shutdown: true
+
+configuration:
+  format: env
+
+database:
+  sql: none
+  nosql: none
+
+task_scheduler: none
+
+logging:
+  framework: slog
+  format: text
+  request_logging: true
+
+observability:
+  health: true
+  readiness: true
+
+deployment:
+  docker: false
+  compose: false
+
+ci:
+  github_actions: false
+  gitlab_ci: false
+  azure_pipelines: false

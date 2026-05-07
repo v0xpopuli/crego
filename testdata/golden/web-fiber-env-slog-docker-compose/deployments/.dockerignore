@@ -1,0 +1,13 @@
+.git
+.github
+.gitlab-ci.yml
+build
+dist
+tmp
+coverage.out
+*.test
+*.db
+.env
+.env.*
+Dockerfile
+docker-compose.yml

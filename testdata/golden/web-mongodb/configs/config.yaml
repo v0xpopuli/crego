@@ -1,0 +1,16 @@
+app_env: development
+
+server:
+  port: 8080
+
+logging:
+  format: text
+
+
+database:
+
+  mongodb:
+    user-name: ""
+    password: ""
+    host: "localhost:27017"
+    database: "app"

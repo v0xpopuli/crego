@@ -1,0 +1,25 @@
+app_env: development
+
+server:
+  port: 8080
+
+logging:
+  format: text
+
+
+database:
+
+  redis:
+    host: "localhost:6379"
+    password: ""
+    database: 0
+
+task_scheduler:
+  worker: crego-task-executor
+  tasks:
+    example_cleanup:
+      name: example-cleanup
+      cron: "0 2 * * *"
+      should_start_immediately: false
+      batch_size: 500
+      retention_period: 72h

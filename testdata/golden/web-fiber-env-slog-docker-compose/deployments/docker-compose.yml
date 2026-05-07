@@ -1,0 +1,14 @@
+services:
+  app:
+    build:
+      context: .
+    image: orders-api:local
+    environment:
+      APP_ENV: development
+      SERVER_PORT: "8080"
+      LOGGING_FORMAT: text
+
+    ports:
+      - "8080:8080"
+
+

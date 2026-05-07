@@ -1,0 +1,14 @@
+app_env = "development"
+
+[server]
+port = 8080
+
+[logging]
+format = "json"
+
+[database.sqlite]
+path = "app.db"
+foreign-keys = true
+migrations = "file://scripts/migrations"
+max-open-connections = 1
+max-idle-connections = 1

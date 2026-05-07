@@ -1,0 +1,30 @@
+app_env: development
+
+server:
+  port: 8080
+
+logging:
+  format: json
+
+
+database:
+
+  postgres:
+    user-name: "postgres"
+    password: "postgres"
+    host: "localhost:5432"
+    database: "app"
+    ssl-mode: ""
+    migrations: file://scripts/migrations
+    max-open-connections: 10
+    max-idle-connections: 5
+
+task_scheduler:
+  worker: crego-task-executor
+  tasks:
+    example_cleanup:
+      name: example-cleanup
+      cron: "0 2 * * *"
+      should_start_immediately: false
+      batch_size: 500
+      retention_period: 72h
