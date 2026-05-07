@@ -37,7 +37,8 @@ type (
 		Server              string
 		ConfigurationFormat string
 		Logging             string
-		Database            string
+		SQLDatabase         string
+		NoSQLDatabases      map[string]bool
 		DatabaseFramework   string
 		Migrations          string
 		Health              bool
@@ -94,6 +95,7 @@ const (
 	stepDatabase
 	stepDatabaseFramework
 	stepMigrations
+	stepNoSQL
 	stepObservability
 	stepTaskScheduler
 	stepDeployment
@@ -117,11 +119,7 @@ func NewConfigureWizardState(source *recipe.Recipe, opts ConfigureWizardOptions)
 	recipe.Normalize(&resolved)
 	recipe.ApplyDefaults(&resolved)
 
-	drivers := recipe.DatabaseDrivers(resolved.Database)
-	databaseDriver := recipe.DatabaseDriverNone
-	if len(drivers) > 0 {
-		databaseDriver = drivers[0]
-	}
+	sqlDatabase, noSQLDatabases := databaseSelections(resolved.Database)
 
 	return &ConfigureWizardState{
 		options:             opts,
@@ -133,7 +131,8 @@ func NewConfigureWizardState(source *recipe.Recipe, opts ConfigureWizardOptions)
 		Server:              resolved.Server.Framework,
 		ConfigurationFormat: resolved.Configuration.Format,
 		Logging:             resolved.Logging.Framework,
-		Database:            databaseDriver,
+		SQLDatabase:         sqlDatabase,
+		NoSQLDatabases:      noSQLDatabases,
 		DatabaseFramework:   resolved.Database.Framework,
 		Migrations:          resolved.Database.Migrations,
 		Health:              resolved.Observability.Health,
@@ -207,11 +206,7 @@ func (s *ConfigureWizardState) Recipe() *recipe.Recipe {
 		Configuration: recipe.ConfigurationConfig{
 			Format: s.ConfigurationFormat,
 		},
-		Database: recipe.DatabaseConfig{
-			Driver:     s.Database,
-			Framework:  s.DatabaseFramework,
-			Migrations: s.Migrations,
-		},
+		Database:      recipe.DatabaseConfig{},
 		TaskScheduler: s.TaskScheduler,
 		Logging: recipe.LoggingConfig{
 			Framework: s.Logging,
@@ -240,15 +235,20 @@ func (s *ConfigureWizardState) Recipe() *recipe.Recipe {
 		}
 	}
 
-	if isSQLDatabase(s.Database) {
-		r.Database.SQL = s.Database
-	} else if isNoSQLDatabase(s.Database) {
-		r.Database.NoSQL = recipe.NoSQLDrivers{s.Database}
-		r.Database.Framework = recipe.DatabaseFrameworkNone
-		r.Database.Migrations = recipe.DatabaseMigrationsNone
-	} else {
-		r.Database.Framework = recipe.DatabaseFrameworkNone
-		r.Database.Migrations = recipe.DatabaseMigrationsNone
+	sqlDatabase := s.SQLDatabase
+	databaseFramework := s.DatabaseFramework
+	migrations := s.Migrations
+	if !isSQLDatabase(sqlDatabase) {
+		sqlDatabase = recipe.DatabaseDriverNone
+		databaseFramework = recipe.DatabaseFrameworkNone
+		migrations = recipe.DatabaseMigrationsNone
+	}
+	r.Database = recipe.DatabaseConfig{
+		SQL:          sqlDatabase,
+		NoSQL:        selectedNoSQLDrivers(s.NoSQLDatabases),
+		ORMFramework: databaseFramework,
+		Framework:    databaseFramework,
+		Migrations:   migrations,
 	}
 
 	recipe.Normalize(r)
@@ -285,7 +285,7 @@ func (s configureScreen) Update(msg tea.Msg) (screens.Screen, tea.Cmd) {
 		switch s.step {
 		case stepProjectIdentity:
 			return s.updateIdentity(key, msg)
-		case stepDeployment, stepCI, stepObservability:
+		case stepDeployment, stepCI, stepObservability, stepNoSQL:
 			return s.updateMultiSelect(key, msg)
 		default:
 			return s.updateSelect(key, msg)
@@ -310,7 +310,7 @@ func (s configureScreen) View() string {
 		bodyParts = append(bodyParts, components.Preview(s.styles.Components(), s.layoutPreview()))
 	case stepPreview:
 		bodyParts = append(bodyParts, s.preview())
-	case stepDeployment, stepCI, stepObservability:
+	case stepDeployment, stepCI, stepObservability, stepNoSQL:
 		bodyParts = append(bodyParts, s.multiInput.View(s.styles.Components()))
 	default:
 		bodyParts = append(bodyParts, s.selectInput.View(s.styles.Components()))
@@ -372,7 +372,7 @@ func (s configureScreen) updateSelect(key tea.KeyMsg, msg tea.Msg) (screens.Scre
 	case stepLogging:
 		s.state.Logging = value
 	case stepDatabase:
-		s.state.Database = value
+		s.state.SQLDatabase = value
 		s.applyDatabaseDefaults()
 	case stepDatabaseFramework:
 		s.state.DatabaseFramework = value
@@ -434,6 +434,12 @@ func (s configureScreen) updateMultiSelect(key tea.KeyMsg, msg tea.Msg) (screens
 	case stepObservability:
 		s.state.Health = values["health"]
 		s.state.Readiness = values["readiness"]
+	case stepNoSQL:
+		if s.state.NoSQLDatabases == nil {
+			_, s.state.NoSQLDatabases = databaseSelections(recipe.DatabaseConfig{})
+		}
+		s.state.NoSQLDatabases[recipe.DatabaseDriverRedis] = values[recipe.DatabaseDriverRedis]
+		s.state.NoSQLDatabases[recipe.DatabaseDriverMongoDB] = values[recipe.DatabaseDriverMongoDB]
 	case stepDeployment:
 		s.state.Docker = values["docker"]
 		s.state.Compose = values["compose"]
@@ -503,16 +509,16 @@ func (s configureScreen) previousScreen() configureScreen {
 }
 
 func (s configureScreen) applyDatabaseDefaults() {
-	switch s.state.Database {
+	switch s.state.SQLDatabase {
 	case recipe.DatabaseDriverPostgres:
-		if !contains(compatibleFrameworks(s.state.Database), s.state.DatabaseFramework) {
+		if !contains(compatibleFrameworks(s.state.SQLDatabase), s.state.DatabaseFramework) {
 			s.state.DatabaseFramework = recipe.DatabaseFrameworkPGX
 		}
 		if s.state.Migrations == "" {
 			s.state.Migrations = recipe.DatabaseMigrationsNone
 		}
 	case recipe.DatabaseDriverMySQL, recipe.DatabaseDriverSQLite:
-		if !contains(compatibleFrameworks(s.state.Database), s.state.DatabaseFramework) {
+		if !contains(compatibleFrameworks(s.state.SQLDatabase), s.state.DatabaseFramework) {
 			s.state.DatabaseFramework = recipe.DatabaseFrameworkDatabaseSQL
 		}
 		if s.state.Migrations == "" {
@@ -561,7 +567,8 @@ func (s configureScreen) preview() string {
 	}
 	builder.WriteString(fmt.Sprintf("  configuration: %s\n", r.Configuration.Format))
 	builder.WriteString(fmt.Sprintf("  logging: %s\n", r.Logging.Framework))
-	builder.WriteString(fmt.Sprintf("  database/framework/migrations: %s/%s/%s\n", s.state.Database, r.Database.Framework, r.Database.Migrations))
+	builder.WriteString(fmt.Sprintf("  sql/framework/migrations: %s/%s/%s\n", r.Database.SQL, r.Database.Framework, r.Database.Migrations))
+	builder.WriteString(fmt.Sprintf("  nosql: %s\n", joinStringsOrNone(r.Database.NoSQL)))
 	builder.WriteString(fmt.Sprintf("  task_scheduler: %s\n", r.TaskScheduler))
 	builder.WriteString(fmt.Sprintf("  deployment: %s\n", joinEnabled(enabledLabel{r.Deployment.Docker, "docker"}, enabledLabel{r.Deployment.Compose, "compose"})))
 	builder.WriteString(fmt.Sprintf("  ci: %s\n\n", joinEnabled(enabledLabel{r.CI.GitHubActions, "github_actions"}, enabledLabel{r.CI.GitLabCI, "gitlab_ci"}, enabledLabel{r.CI.AzurePipelines, "azure_pipelines"})))
@@ -663,22 +670,22 @@ func (s configureScreen) configureInputs() configureScreen {
 			{Label: "logrus", Value: recipe.LoggingFrameworkLogrus, Description: "Mature, widely known"},
 		}, s.state.Logging)
 	case stepDatabase:
-		s.selectInput = selectWithCurrent("Database driver", []components.SelectOption{
-			{Label: "None", Value: recipe.DatabaseDriverNone, Description: "No database integration"},
+		s.selectInput = selectWithCurrent("SQL database", []components.SelectOption{
+			{Label: "None", Value: recipe.DatabaseDriverNone, Description: "No SQL database integration"},
 			{Label: "PostgreSQL", Value: recipe.DatabaseDriverPostgres, Description: "SQL database, production default"},
 			{Label: "MySQL", Value: recipe.DatabaseDriverMySQL, Description: "SQL database, common web stack"},
 			{Label: "SQLite", Value: recipe.DatabaseDriverSQLite, Description: "Local/file database"},
-			{Label: "Redis", Value: recipe.DatabaseDriverRedis, Description: "NoSQL key-value database"},
-			{Label: "MongoDB", Value: recipe.DatabaseDriverMongoDB, Description: "NoSQL document database"},
-		}, s.state.Database)
+		}, s.state.SQLDatabase)
 	case stepDatabaseFramework:
-		s.selectInput = selectWithCurrent("Database framework", frameworkOptions(s.state.Database), s.state.DatabaseFramework)
+		s.selectInput = selectWithCurrent("Database framework", frameworkOptions(s.state.SQLDatabase), s.state.DatabaseFramework)
 	case stepMigrations:
 		s.selectInput = selectWithCurrent("Migration tool", []components.SelectOption{
 			{Label: "None", Value: recipe.DatabaseMigrationsNone, Description: "Manage schema outside crego"},
 			{Label: "goose", Value: recipe.DatabaseMigrationsGoose, Description: "SQL migrations with Go-friendly tooling"},
 			{Label: "migrate", Value: recipe.DatabaseMigrationsMigrate, Description: "Broad database migration CLI"},
 		}, s.state.Migrations)
+	case stepNoSQL:
+		s.multiInput = multiWithCurrent("NoSQL databases", noSQLDatabaseOptions(), s.state.NoSQLDatabases)
 	case stepObservability:
 		s.multiInput = multiWithCurrent("Observability", []components.SelectOption{
 			{Label: "Health endpoint", Value: "health", Description: "/healthz for basic liveness"},
@@ -763,11 +770,13 @@ func (s configureScreen) stepTitle() string {
 	case stepLogging:
 		return "Logging"
 	case stepDatabase:
-		return "Database"
+		return "SQL database"
 	case stepDatabaseFramework:
 		return "SQL framework"
 	case stepMigrations:
 		return "Migrations"
+	case stepNoSQL:
+		return "NoSQL databases"
 	case stepObservability:
 		return "Observability"
 	case stepTaskScheduler:
@@ -796,6 +805,8 @@ func (s configureScreen) description() string {
 		return "Enter a safe project name and Go module path. Tab switches fields."
 	case stepDatabaseFramework:
 		return "Only frameworks compatible with the selected SQL database are shown."
+	case stepNoSQL:
+		return "Choose zero, one, or multiple NoSQL databases."
 	case stepPreview:
 		if s.state.options.Mode == ConfigureWizardModeGeneration {
 			return "Review the resolved generation plan before writing files."
@@ -812,7 +823,7 @@ func (s configureScreen) hint() string {
 	switch s.step {
 	case stepProjectIdentity:
 		return HelpLine(HelpInput)
-	case stepObservability, stepDeployment, stepCI:
+	case stepObservability, stepDeployment, stepCI, stepNoSQL:
 		return HelpLine(HelpMulti)
 	case stepPreview, stepSave:
 		return HelpLine(HelpPreview)
@@ -891,7 +902,7 @@ func stepGroup(step configureStep) string {
 		return "Project"
 	case stepServer, stepConfiguration, stepLogging:
 		return "Stack"
-	case stepDatabase, stepDatabaseFramework, stepMigrations:
+	case stepDatabase, stepDatabaseFramework, stepMigrations, stepNoSQL:
 		return "Data"
 	case stepObservability, stepTaskScheduler:
 		return "Runtime"
@@ -919,11 +930,13 @@ func progressStepLabel(step configureStep) string {
 	case stepLogging:
 		return "Logging"
 	case stepDatabase:
-		return "Database"
+		return "SQL database"
 	case stepDatabaseFramework:
 		return "SQL framework"
 	case stepMigrations:
 		return "Migrations"
+	case stepNoSQL:
+		return "NoSQL"
 	case stepObservability:
 		return "Observability"
 	case stepTaskScheduler:
@@ -970,10 +983,13 @@ func selectedStackValues(state *ConfigureWizardState) []string {
 	}
 	appendIf(state.ConfigurationFormat)
 	appendIf(state.Logging)
-	if isSQLDatabase(state.Database) && state.DatabaseFramework != "" && state.DatabaseFramework != recipe.DatabaseFrameworkNone {
-		appendIf(state.Database + "/" + state.DatabaseFramework)
+	if isSQLDatabase(state.SQLDatabase) && state.DatabaseFramework != "" && state.DatabaseFramework != recipe.DatabaseFrameworkNone {
+		appendIf(state.SQLDatabase + "/" + state.DatabaseFramework)
 	} else {
-		appendIf(state.Database)
+		appendIf(state.SQLDatabase)
+	}
+	for _, driver := range selectedNoSQLDrivers(state.NoSQLDatabases) {
+		appendIf(driver)
 	}
 	appendIf(state.Migrations)
 	appendIf(state.TaskScheduler)
@@ -1067,7 +1083,7 @@ func shouldShowConfigureStep(step configureStep, state *ConfigureWizardState) bo
 	case stepServer, stepObservability:
 		return state.ProjectType == recipe.ProjectTypeWeb
 	case stepDatabaseFramework, stepMigrations:
-		return isSQLDatabase(state.Database)
+		return isSQLDatabase(state.SQLDatabase)
 	default:
 		return true
 	}
@@ -1128,6 +1144,13 @@ func multiWithCurrent(title string, options []components.SelectOption, selected 
 	return input
 }
 
+func noSQLDatabaseOptions() []components.SelectOption {
+	return []components.SelectOption{
+		{Label: "Redis", Value: recipe.DatabaseDriverRedis, Description: "Key-value NoSQL database"},
+		{Label: "MongoDB", Value: recipe.DatabaseDriverMongoDB, Description: "Document NoSQL database"},
+	}
+}
+
 func selectedSet(values []string) map[string]bool {
 	result := make(map[string]bool, len(values))
 	for _, value := range values {
@@ -1136,18 +1159,48 @@ func selectedSet(values []string) map[string]bool {
 	return result
 }
 
+func databaseSelections(database recipe.DatabaseConfig) (string, map[string]bool) {
+	sqlDatabase := recipe.DatabaseDriverNone
+	noSQLDatabases := map[string]bool{
+		recipe.DatabaseDriverRedis:   false,
+		recipe.DatabaseDriverMongoDB: false,
+	}
+
+	for _, driver := range recipe.DatabaseDrivers(database) {
+		switch driver {
+		case recipe.DatabaseDriverPostgres, recipe.DatabaseDriverMySQL, recipe.DatabaseDriverSQLite:
+			if sqlDatabase == recipe.DatabaseDriverNone {
+				sqlDatabase = driver
+			}
+		case recipe.DatabaseDriverRedis, recipe.DatabaseDriverMongoDB:
+			noSQLDatabases[driver] = true
+		}
+	}
+
+	return sqlDatabase, noSQLDatabases
+}
+
+func selectedNoSQLDrivers(selected map[string]bool) recipe.NoSQLDrivers {
+	noSQL := recipe.NoSQLDrivers{}
+	if selected[recipe.DatabaseDriverRedis] {
+		noSQL = append(noSQL, recipe.DatabaseDriverRedis)
+	}
+	if selected[recipe.DatabaseDriverMongoDB] {
+		noSQL = append(noSQL, recipe.DatabaseDriverMongoDB)
+	}
+	return noSQL
+}
+
+func joinStringsOrNone(values []string) string {
+	if len(values) == 0 {
+		return "none"
+	}
+	return strings.Join(values, ", ")
+}
+
 func isSQLDatabase(driver string) bool {
 	switch driver {
 	case recipe.DatabaseDriverPostgres, recipe.DatabaseDriverMySQL, recipe.DatabaseDriverSQLite:
-		return true
-	default:
-		return false
-	}
-}
-
-func isNoSQLDatabase(driver string) bool {
-	switch driver {
-	case recipe.DatabaseDriverRedis, recipe.DatabaseDriverMongoDB:
 		return true
 	default:
 		return false

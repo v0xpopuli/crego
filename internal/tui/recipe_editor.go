@@ -31,7 +31,8 @@ type (
 		Server              string
 		ConfigurationFormat string
 		Logging             string
-		Database            string
+		SQLDatabase         string
+		NoSQLDatabases      map[string]bool
 		DatabaseFramework   string
 		Migrations          string
 		Health              bool
@@ -75,9 +76,11 @@ const (
 	editorServer         = "server"
 	editorConfiguration  = "configuration"
 	editorLogging        = "logging"
-	editorDatabase       = "database"
+	editorSQLDatabase    = "sql_database"
 	editorFramework      = "framework"
 	editorMigrations     = "migrations"
+	editorRedis          = "redis"
+	editorMongoDB        = "mongodb"
 	editorHealth         = "health"
 	editorReadiness      = "readiness"
 	editorScheduler      = "scheduler"
@@ -103,11 +106,7 @@ func NewRecipeEditorState(source *recipe.Recipe, opts RecipeEditorOptions) *Reci
 	recipe.Normalize(&resolved)
 	recipe.ApplyDefaults(&resolved)
 
-	drivers := recipe.DatabaseDrivers(resolved.Database)
-	databaseDriver := recipe.DatabaseDriverNone
-	if len(drivers) > 0 {
-		databaseDriver = drivers[0]
-	}
+	sqlDatabase, noSQLDatabases := databaseSelections(resolved.Database)
 
 	state := &RecipeEditorState{
 		options:             opts,
@@ -117,7 +116,8 @@ func NewRecipeEditorState(source *recipe.Recipe, opts RecipeEditorOptions) *Reci
 		Server:              resolved.Server.Framework,
 		ConfigurationFormat: resolved.Configuration.Format,
 		Logging:             resolved.Logging.Framework,
-		Database:            databaseDriver,
+		SQLDatabase:         sqlDatabase,
+		NoSQLDatabases:      noSQLDatabases,
 		DatabaseFramework:   resolved.Database.Framework,
 		Migrations:          resolved.Database.Migrations,
 		Health:              resolved.Observability.Health,
@@ -171,10 +171,21 @@ func (s *RecipeEditorState) Recipe() *recipe.Recipe {
 	r.ORMFramework = ""
 	r.NoSQLDatabase = nil
 	r.Migrations = ""
+	noSQL := selectedNoSQLDrivers(s.NoSQLDatabases)
+	sqlDatabase := s.SQLDatabase
+	databaseFramework := s.DatabaseFramework
+	migrations := s.Migrations
+	if !isSQLDatabase(sqlDatabase) {
+		sqlDatabase = recipe.DatabaseDriverNone
+		databaseFramework = recipe.DatabaseFrameworkNone
+		migrations = recipe.DatabaseMigrationsNone
+	}
 	r.Database = recipe.DatabaseConfig{
-		Driver:     s.Database,
-		Framework:  s.DatabaseFramework,
-		Migrations: s.Migrations,
+		SQL:          sqlDatabase,
+		NoSQL:        noSQL,
+		ORMFramework: databaseFramework,
+		Framework:    databaseFramework,
+		Migrations:   migrations,
 	}
 	r.TaskScheduler = s.TaskScheduler
 	r.Observability.Health = s.ProjectType == recipe.ProjectTypeWeb && s.Health
@@ -192,17 +203,6 @@ func (s *RecipeEditorState) Recipe() *recipe.Recipe {
 		}
 	} else {
 		r.Server = recipe.ServerConfig{}
-	}
-
-	if isSQLDatabase(s.Database) {
-		r.Database.SQL = s.Database
-	} else if isNoSQLDatabase(s.Database) {
-		r.Database.NoSQL = recipe.NoSQLDrivers{s.Database}
-		r.Database.Framework = recipe.DatabaseFrameworkNone
-		r.Database.Migrations = recipe.DatabaseMigrationsNone
-	} else {
-		r.Database.Framework = recipe.DatabaseFrameworkNone
-		r.Database.Migrations = recipe.DatabaseMigrationsNone
 	}
 
 	recipe.Normalize(&r)
@@ -319,13 +319,12 @@ func editorStackSummary(r *recipe.Recipe) string {
 	appendIf(r.Configuration.Format)
 	appendIf(r.Logging.Framework)
 
-	drivers := recipe.DatabaseDrivers(r.Database)
-	if len(drivers) > 0 {
-		if r.Database.Framework != "" && r.Database.Framework != recipe.DatabaseFrameworkNone {
-			appendIf(drivers[0] + "/" + r.Database.Framework)
-		} else {
-			appendIf(drivers[0])
+	for _, driver := range recipe.DatabaseDrivers(r.Database) {
+		if isSQLDatabase(driver) && r.Database.Framework != "" && r.Database.Framework != recipe.DatabaseFrameworkNone {
+			appendIf(driver + "/" + r.Database.Framework)
+			continue
 		}
+		appendIf(driver)
 	}
 
 	appendIf(r.Database.Migrations)
@@ -463,14 +462,8 @@ func inactiveReason(fieldID string, state *RecipeEditorState) string {
 	case editorServer:
 		return "Inactive because project type is CLI.\nWeb server is only used for web projects."
 	case editorFramework:
-		if isNoSQLDatabase(state.Database) {
-			return fmt.Sprintf("Inactive because database driver is %s.\nNo ORM/framework is used for NoSQL databases.", state.Database)
-		}
 		return "Inactive because no SQL database is selected."
 	case editorMigrations:
-		if isNoSQLDatabase(state.Database) {
-			return fmt.Sprintf("Inactive because database driver is %s.\nSQL migration tools are not used for NoSQL databases.", state.Database)
-		}
 		return "Inactive because no SQL database is selected."
 	case editorHealth, editorReadiness:
 		return "Inactive because project type is CLI.\nHTTP endpoints are only generated for web projects."
@@ -491,12 +484,16 @@ func fieldDescription(id string, state *RecipeEditorState) string {
 		return "Choose generated application configuration format."
 	case editorLogging:
 		return "Choose logging provider."
-	case editorDatabase:
-		return "Choose database integration."
+	case editorSQLDatabase:
+		return "Choose SQL database integration."
 	case editorFramework:
 		return "Choose SQL database access layer."
 	case editorMigrations:
 		return "Choose SQL migration tool."
+	case editorRedis:
+		return "Generate Redis integration."
+	case editorMongoDB:
+		return "Generate MongoDB integration."
 	case editorHealth:
 		return "Generate basic health endpoint."
 	case editorReadiness:
@@ -569,20 +566,16 @@ func optionDescription(fieldID string, value string) string {
 		case recipe.LoggingFrameworkLogrus:
 			return "Mature, widely known"
 		}
-	case editorDatabase:
+	case editorSQLDatabase:
 		switch value {
 		case recipe.DatabaseDriverNone:
-			return "No database integration"
+			return "No SQL database integration"
 		case recipe.DatabaseDriverPostgres:
 			return "SQL database, production default"
 		case recipe.DatabaseDriverMySQL:
 			return "SQL database, common web stack"
 		case recipe.DatabaseDriverSQLite:
 			return "Local/file database"
-		case recipe.DatabaseDriverRedis:
-			return "Key-value NoSQL database"
-		case recipe.DatabaseDriverMongoDB:
-			return "Document NoSQL database"
 		}
 	case editorFramework:
 		switch value {
@@ -622,6 +615,10 @@ func enabledDescription(fieldID string) string {
 		return "Generate GET /health"
 	case editorReadiness:
 		return "Generate GET /ready"
+	case editorRedis:
+		return "Generate Redis client and configuration"
+	case editorMongoDB:
+		return "Generate MongoDB client and configuration"
 	case editorDocker:
 		return "Generate Dockerfile"
 	case editorCompose:
@@ -643,6 +640,10 @@ func disabledDescription(fieldID string) string {
 		return "Do not generate health endpoint"
 	case editorReadiness:
 		return "Do not generate readiness endpoint"
+	case editorRedis:
+		return "Do not generate Redis integration"
+	case editorMongoDB:
+		return "Do not generate MongoDB integration"
 	case editorDocker:
 		return "Do not generate Dockerfile"
 	case editorCompose:
@@ -687,9 +688,11 @@ func (s *recipeEditorScreen) sectionsView() string {
 		{
 			title: "Data layer",
 			fields: []string{
-				editorDatabase,
+				editorSQLDatabase,
 				editorFramework,
 				editorMigrations,
+				editorRedis,
+				editorMongoDB,
 			},
 		},
 		{
@@ -787,9 +790,11 @@ func (s *recipeEditorScreen) fields() []recipeEditorField {
 		{id: editorServer, label: "Server", current: s.state.Server, values: []string{recipe.ServerFrameworkNetHTTP, recipe.ServerFrameworkChi, recipe.ServerFrameworkGin, recipe.ServerFrameworkEcho, recipe.ServerFrameworkFiber}, enabled: s.state.ProjectType == recipe.ProjectTypeWeb},
 		{id: editorConfiguration, label: "Config", current: s.state.ConfigurationFormat, values: []string{recipe.ConfigurationFormatEnv, recipe.ConfigurationFormatYAML, recipe.ConfigurationFormatJSON, recipe.ConfigurationFormatTOML}, enabled: true},
 		{id: editorLogging, label: "Logging", current: s.state.Logging, values: []string{recipe.LoggingFrameworkSlog, recipe.LoggingFrameworkZap, recipe.LoggingFrameworkZerolog, recipe.LoggingFrameworkLogrus}, enabled: true},
-		{id: editorDatabase, label: "Database", current: s.state.Database, values: []string{recipe.DatabaseDriverNone, recipe.DatabaseDriverPostgres, recipe.DatabaseDriverMySQL, recipe.DatabaseDriverSQLite, recipe.DatabaseDriverRedis, recipe.DatabaseDriverMongoDB}, enabled: true},
-		{id: editorFramework, label: "DB framework", current: s.state.DatabaseFramework, values: compatibleFrameworks(s.state.Database), enabled: isSQLDatabase(s.state.Database)},
-		{id: editorMigrations, label: "Migrations", current: s.state.Migrations, values: []string{recipe.DatabaseMigrationsNone, recipe.DatabaseMigrationsGoose, recipe.DatabaseMigrationsMigrate}, enabled: isSQLDatabase(s.state.Database)},
+		{id: editorSQLDatabase, label: "SQL database", current: s.state.SQLDatabase, values: []string{recipe.DatabaseDriverNone, recipe.DatabaseDriverPostgres, recipe.DatabaseDriverMySQL, recipe.DatabaseDriverSQLite}, enabled: true},
+		{id: editorFramework, label: "DB framework", current: s.state.DatabaseFramework, values: compatibleFrameworks(s.state.SQLDatabase), enabled: isSQLDatabase(s.state.SQLDatabase)},
+		{id: editorMigrations, label: "Migrations", current: s.state.Migrations, values: []string{recipe.DatabaseMigrationsNone, recipe.DatabaseMigrationsGoose, recipe.DatabaseMigrationsMigrate}, enabled: isSQLDatabase(s.state.SQLDatabase)},
+		{id: editorRedis, label: "Redis", current: boolValue(s.state.NoSQLDatabases[recipe.DatabaseDriverRedis]), toggle: true, enabled: true},
+		{id: editorMongoDB, label: "MongoDB", current: boolValue(s.state.NoSQLDatabases[recipe.DatabaseDriverMongoDB]), toggle: true, enabled: true},
 		{id: editorHealth, label: "Health", current: boolValue(s.state.Health), toggle: true, enabled: s.state.ProjectType == recipe.ProjectTypeWeb},
 		{id: editorReadiness, label: "Readiness", current: boolValue(s.state.Readiness), toggle: true, enabled: s.state.ProjectType == recipe.ProjectTypeWeb},
 		{id: editorScheduler, label: "Task scheduler", current: s.state.TaskScheduler, values: []string{recipe.TaskSchedulerNone, recipe.TaskSchedulerGocron}, enabled: true},
@@ -803,16 +808,16 @@ func (s *recipeEditorScreen) fields() []recipeEditorField {
 }
 
 func (s *RecipeEditorState) applyDatabaseDefaults() {
-	switch s.Database {
+	switch s.SQLDatabase {
 	case recipe.DatabaseDriverPostgres:
-		if !contains(compatibleFrameworks(s.Database), s.DatabaseFramework) {
+		if !contains(compatibleFrameworks(s.SQLDatabase), s.DatabaseFramework) {
 			s.DatabaseFramework = recipe.DatabaseFrameworkPGX
 		}
 		if s.Migrations == "" {
 			s.Migrations = recipe.DatabaseMigrationsNone
 		}
 	case recipe.DatabaseDriverMySQL, recipe.DatabaseDriverSQLite:
-		if !contains(compatibleFrameworks(s.Database), s.DatabaseFramework) {
+		if !contains(compatibleFrameworks(s.SQLDatabase), s.DatabaseFramework) {
 			s.DatabaseFramework = recipe.DatabaseFrameworkDatabaseSQL
 		}
 		if s.Migrations == "" {
@@ -847,7 +852,7 @@ func (s *recipeEditorScreen) changeCurrent(delta int) {
 	}
 	next := cycleValue(field.values, field.current, delta)
 	s.setField(field.id, next)
-	if field.id == editorDatabase {
+	if field.id == editorSQLDatabase {
 		s.state.applyDatabaseDefaults()
 	}
 	s.err = nil
@@ -868,12 +873,22 @@ func (s *recipeEditorScreen) setField(id string, value any) {
 		s.state.ConfigurationFormat = value.(string)
 	case editorLogging:
 		s.state.Logging = value.(string)
-	case editorDatabase:
-		s.state.Database = value.(string)
+	case editorSQLDatabase:
+		s.state.SQLDatabase = value.(string)
 	case editorFramework:
 		s.state.DatabaseFramework = value.(string)
 	case editorMigrations:
 		s.state.Migrations = value.(string)
+	case editorRedis:
+		if s.state.NoSQLDatabases == nil {
+			_, s.state.NoSQLDatabases = databaseSelections(recipe.DatabaseConfig{})
+		}
+		s.state.NoSQLDatabases[recipe.DatabaseDriverRedis] = value.(bool)
+	case editorMongoDB:
+		if s.state.NoSQLDatabases == nil {
+			_, s.state.NoSQLDatabases = databaseSelections(recipe.DatabaseConfig{})
+		}
+		s.state.NoSQLDatabases[recipe.DatabaseDriverMongoDB] = value.(bool)
 	case editorHealth:
 		s.state.Health = value.(bool)
 	case editorReadiness:

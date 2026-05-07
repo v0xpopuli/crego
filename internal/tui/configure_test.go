@@ -31,7 +31,7 @@ func (s *ConfigureWizardTestSuite) TestRecipeBuildsFullWebMatrix() {
 	state.Server = recipe.ServerFrameworkFiber
 	state.ConfigurationFormat = recipe.ConfigurationFormatTOML
 	state.Logging = recipe.LoggingFrameworkLogrus
-	state.Database = recipe.DatabaseDriverPostgres
+	state.SQLDatabase = recipe.DatabaseDriverPostgres
 	state.DatabaseFramework = recipe.DatabaseFrameworkPGX
 	state.Migrations = recipe.DatabaseMigrationsGoose
 	state.Health = true
@@ -55,6 +55,98 @@ func (s *ConfigureWizardTestSuite) TestRecipeBuildsFullWebMatrix() {
 	s.Require().True(r.CI.GitHubActions)
 	s.Require().True(r.CI.GitLabCI)
 	s.Require().True(r.CI.AzurePipelines)
+}
+
+func (s *ConfigureWizardTestSuite) TestRecipeBuildsSQLDatabaseWithRedisAndMongoDB() {
+	state := NewConfigureWizardState(nil, ConfigureWizardOptions{})
+	state.Name = "orders"
+	state.Module = "github.com/example/orders"
+	state.SQLDatabase = recipe.DatabaseDriverPostgres
+	state.DatabaseFramework = recipe.DatabaseFrameworkPGX
+	state.Migrations = recipe.DatabaseMigrationsMigrate
+	state.NoSQLDatabases[recipe.DatabaseDriverRedis] = true
+	state.NoSQLDatabases[recipe.DatabaseDriverMongoDB] = true
+
+	r := state.Recipe()
+
+	s.Require().NoError(recipe.Validate(r))
+	s.Require().Equal(recipe.DatabaseDriverPostgres, r.Database.SQL)
+	s.Require().Contains(r.Database.NoSQL, recipe.DatabaseDriverRedis)
+	s.Require().Contains(r.Database.NoSQL, recipe.DatabaseDriverMongoDB)
+	s.Require().Equal(recipe.DatabaseFrameworkPGX, r.Database.Framework)
+	s.Require().Equal(recipe.DatabaseMigrationsMigrate, r.Database.Migrations)
+}
+
+func (s *ConfigureWizardTestSuite) TestRecipeBuildsRedisAndMongoDBWithoutSQL() {
+	state := NewConfigureWizardState(nil, ConfigureWizardOptions{})
+	state.Name = "cache"
+	state.Module = "github.com/example/cache"
+	state.SQLDatabase = recipe.DatabaseDriverNone
+	state.DatabaseFramework = recipe.DatabaseFrameworkGORM
+	state.Migrations = recipe.DatabaseMigrationsMigrate
+	state.NoSQLDatabases[recipe.DatabaseDriverRedis] = true
+	state.NoSQLDatabases[recipe.DatabaseDriverMongoDB] = true
+
+	r := state.Recipe()
+
+	s.Require().NoError(recipe.Validate(r))
+	s.Require().Equal(recipe.DatabaseDriverNone, r.Database.SQL)
+	s.Require().Contains(r.Database.NoSQL, recipe.DatabaseDriverRedis)
+	s.Require().Contains(r.Database.NoSQL, recipe.DatabaseDriverMongoDB)
+	s.Require().Equal(recipe.DatabaseFrameworkNone, r.Database.Framework)
+	s.Require().Equal(recipe.DatabaseMigrationsNone, r.Database.Migrations)
+}
+
+func (s *ConfigureWizardTestSuite) TestSQLNoneDisablesFrameworkAndMigrations() {
+	state := NewConfigureWizardState(nil, ConfigureWizardOptions{})
+	state.Name = "worker"
+	state.Module = "github.com/example/worker"
+	state.SQLDatabase = recipe.DatabaseDriverNone
+	state.DatabaseFramework = recipe.DatabaseFrameworkGORM
+	state.Migrations = recipe.DatabaseMigrationsMigrate
+
+	r := state.Recipe()
+
+	s.Require().NoError(recipe.Validate(r))
+	s.Require().Equal(recipe.DatabaseDriverNone, r.Database.SQL)
+	s.Require().Equal(recipe.DatabaseFrameworkNone, r.Database.Framework)
+	s.Require().Equal(recipe.DatabaseMigrationsNone, r.Database.Migrations)
+	s.Require().False(shouldShowConfigureStep(stepDatabaseFramework, state))
+	s.Require().False(shouldShowConfigureStep(stepMigrations, state))
+}
+
+func (s *ConfigureWizardTestSuite) TestDatabaseCombinationsRemainValid() {
+	cases := []struct {
+		name  string
+		sql   string
+		noSQL []string
+	}{
+		{name: "none", sql: recipe.DatabaseDriverNone},
+		{name: "postgres", sql: recipe.DatabaseDriverPostgres},
+		{name: "redis", sql: recipe.DatabaseDriverNone, noSQL: []string{recipe.DatabaseDriverRedis}},
+		{name: "mongodb", sql: recipe.DatabaseDriverNone, noSQL: []string{recipe.DatabaseDriverMongoDB}},
+		{name: "redis mongodb", sql: recipe.DatabaseDriverNone, noSQL: []string{recipe.DatabaseDriverRedis, recipe.DatabaseDriverMongoDB}},
+		{name: "postgres redis", sql: recipe.DatabaseDriverPostgres, noSQL: []string{recipe.DatabaseDriverRedis}},
+		{name: "postgres mongodb", sql: recipe.DatabaseDriverPostgres, noSQL: []string{recipe.DatabaseDriverMongoDB}},
+		{name: "postgres redis mongodb", sql: recipe.DatabaseDriverPostgres, noSQL: []string{recipe.DatabaseDriverRedis, recipe.DatabaseDriverMongoDB}},
+		{name: "mysql redis", sql: recipe.DatabaseDriverMySQL, noSQL: []string{recipe.DatabaseDriverRedis}},
+		{name: "sqlite mongodb", sql: recipe.DatabaseDriverSQLite, noSQL: []string{recipe.DatabaseDriverMongoDB}},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			state := NewConfigureWizardState(nil, ConfigureWizardOptions{})
+			state.Name = "app"
+			state.Module = "github.com/example/app"
+			state.SQLDatabase = tc.sql
+			configureScreen{state: state}.applyDatabaseDefaults()
+			for _, driver := range tc.noSQL {
+				state.NoSQLDatabases[driver] = true
+			}
+
+			s.Require().NoError(recipe.Validate(state.Recipe()))
+		})
+	}
 }
 
 func (s *ConfigureWizardTestSuite) TestGenerationModePrefillsModuleAndOutputPreview() {
@@ -156,7 +248,7 @@ func (s *ConfigureWizardTestSuite) TestBackShortcutReturnsToPreviousStep() {
 }
 
 func (s *ConfigureWizardTestSuite) TestMultiSelectScreensShowSelectionHint() {
-	for _, step := range []configureStep{stepObservability, stepDeployment} {
+	for _, step := range []configureStep{stepNoSQL, stepObservability, stepDeployment} {
 		s.Run(fmt.Sprintf("step %d", step), func() {
 			screen := newConfigureScreen(NewStyles(nil, true), NewConfigureWizardState(nil, ConfigureWizardOptions{}), step)
 
@@ -182,26 +274,6 @@ func (s *ConfigureWizardTestSuite) TestSchedulerRecipeYAMLUsesRecipeLevelSelecti
 	s.Require().NotContains(string(data), "worker:")
 }
 
-func (s *ConfigureWizardTestSuite) TestRecipeForNoSQLForcesSafeDatabaseDefaults() {
-	for _, driver := range []string{recipe.DatabaseDriverRedis, recipe.DatabaseDriverMongoDB} {
-		s.Run(driver, func() {
-			state := NewConfigureWizardState(nil, ConfigureWizardOptions{})
-			state.Name = "cache"
-			state.Module = "github.com/example/cache"
-			state.Database = driver
-			state.DatabaseFramework = recipe.DatabaseFrameworkGORM
-			state.Migrations = recipe.DatabaseMigrationsMigrate
-
-			r := state.Recipe()
-
-			s.Require().NoError(recipe.Validate(r))
-			s.Require().Equal(driver, r.Database.Driver)
-			s.Require().Equal(recipe.DatabaseFrameworkNone, r.Database.Framework)
-			s.Require().Equal(recipe.DatabaseMigrationsNone, r.Database.Migrations)
-		})
-	}
-}
-
 func (s *ConfigureWizardTestSuite) TestFrameworkOptionsRejectInvalidPGXCombinations() {
 	s.Require().True(hasFrameworkOption(frameworkOptions(recipe.DatabaseDriverPostgres), recipe.DatabaseFrameworkPGX))
 	s.Require().False(hasFrameworkOption(frameworkOptions(recipe.DatabaseDriverMySQL), recipe.DatabaseFrameworkPGX))
@@ -211,18 +283,20 @@ func (s *ConfigureWizardTestSuite) TestFrameworkOptionsRejectInvalidPGXCombinati
 func (s *ConfigureWizardTestSuite) TestSkippedSteps() {
 	cliState := NewConfigureWizardState(nil, ConfigureWizardOptions{})
 	cliState.ProjectType = recipe.ProjectTypeCLI
-	cliState.Database = recipe.DatabaseDriverNone
+	cliState.SQLDatabase = recipe.DatabaseDriverNone
 
 	s.Require().False(shouldShowConfigureStep(stepServer, cliState))
 	s.Require().False(shouldShowConfigureStep(stepObservability, cliState))
 	s.Require().False(shouldShowConfigureStep(stepDatabaseFramework, cliState))
 	s.Require().False(shouldShowConfigureStep(stepMigrations, cliState))
+	s.Require().True(shouldShowConfigureStep(stepNoSQL, cliState))
 
 	sqlState := NewConfigureWizardState(nil, ConfigureWizardOptions{})
-	sqlState.Database = recipe.DatabaseDriverMySQL
+	sqlState.SQLDatabase = recipe.DatabaseDriverMySQL
 
 	s.Require().True(shouldShowConfigureStep(stepDatabaseFramework, sqlState))
 	s.Require().True(shouldShowConfigureStep(stepMigrations, sqlState))
+	s.Require().True(shouldShowConfigureStep(stepNoSQL, sqlState))
 }
 
 func hasFrameworkOption(options []components.SelectOption, value string) bool {
