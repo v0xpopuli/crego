@@ -1,5 +1,7 @@
 # crego
 
+[![Test](https://github.com/v0xpopuli/crego/actions/workflows/test.yml/badge.svg)](https://github.com/v0xpopuli/crego/actions/workflows/test.yml)
+
 **Generate Go services you would actually deploy.**
 
 `crego` is a TUI-first Go project generator inspired by Spring Initializr and Powerlevel10k. It helps you create Go web services and CLI projects through an interactive terminal flow, deterministic recipe files, or scriptable commands.
@@ -17,12 +19,35 @@ Crego-generated projects use common Go project layout patterns inspired by the w
 
 ## Installation From Source
 
+Build from a local clone when you want the current branch:
+
 ```sh
 git clone https://github.com/v0xpopuli/crego.git
 cd crego
 make build
 ./build/app/crego version
 ```
+
+Install with `go install` once the repository is public and tagged:
+
+```sh
+go install github.com/v0xpopuli/crego/cmd/crego@latest
+crego version
+```
+
+Source installs built by `go install` use the default development metadata. Release binaries include the release version, commit, and build time.
+
+## Installation From Release Binary
+
+Download the archive for your platform from the GitHub releases page, extract it, and put `crego` on your `PATH`:
+
+```sh
+tar -xzf crego_0.1.0_linux_amd64.tar.gz
+install -m 0755 crego /usr/local/bin/crego
+crego version
+```
+
+Windows release archives use `.zip`; Linux and macOS release archives use `.tar.gz`.
 
 For local development without installing:
 
@@ -199,13 +224,37 @@ orders-web/
 ## Development Commands
 
 ```sh
+make fmt
+make vet
+make test
 make build
-make tests
+make lint
+make release-snapshot
 go run ./cmd/crego components list
 go run ./cmd/crego recipe validate examples/crego.yaml
 ```
 
+`make fmt` rewrites Go files with `gofmt`. CI uses `make fmt-check`, `make vet`, and `make test` when a pull request is opened or the test workflow is run manually for a selected branch.
+
 Per project policy, agents do not run tests automatically. Developers should run the commands locally and provide failures when fixes are needed.
+
+## Release Process
+
+Releases are built by GitHub Actions with GoReleaser when a tag like `v0.1.0` is pushed. The release workflow builds binaries for Linux amd64/arm64, macOS amd64/arm64, and Windows amd64.
+
+Maintainer flow:
+
+```sh
+make fmt
+make vet
+make test
+make build
+make release-snapshot
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+GoReleaser injects `main.version`, `main.commit`, and `main.built` with ldflags so `crego version` reports the release version, commit SHA, and build time.
 
 ## License
 
