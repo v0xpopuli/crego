@@ -1,0 +1,39 @@
+version: v1
+
+project:
+  name: orders-cli
+  module: github.com/example/orders-cli
+  type: cli
+
+go:
+  version: "1.25"
+
+layout:
+  style: minimal
+
+configuration:
+  format: env
+
+database:
+  sql: none
+  nosql: none
+
+task_scheduler: none
+
+logging:
+  framework: slog
+  format: text
+  request_logging: false
+
+observability:
+  health: false
+  readiness: false
+
+deployment:
+  docker: false
+  compose: false
+
+ci:
+  github_actions: false
+  gitlab_ci: false
+  azure_pipelines: false
