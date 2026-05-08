@@ -1,7 +1,5 @@
 # crego
 
-[![Test](https://github.com/v0xpopuli/crego/actions/workflows/test.yml/badge.svg)](https://github.com/v0xpopuli/crego/actions/workflows/test.yml)
-
 **Generate Go services you would actually deploy.**
 
 `crego` is a TUI-first Go project generator inspired by Spring Initializr and Powerlevel10k. It helps you create Go web services and CLI projects through an interactive terminal flow, deterministic recipe files, or scriptable commands.
