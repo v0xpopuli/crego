@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"net/url"
 
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -52,9 +53,13 @@ func (c *MongoDBClient) Shutdown(ctx context.Context) error {
 }
 
 func mongoDBURI(cfg config.MongoDBConfig) string {
-	credentials := ""
-	if cfg.UserName != "" {
-		credentials = cfg.UserName + ":" + cfg.Password + "@"
+	address := &url.URL{
+		Scheme: "mongodb",
+		Host:   cfg.Host,
+		Path:   "/" + cfg.Database,
 	}
-	return fmt.Sprintf("mongodb://%s%s/%s", credentials, cfg.Host, cfg.Database)
+	if cfg.UserName != "" {
+		address.User = url.UserPassword(cfg.UserName, cfg.Password)
+	}
+	return address.String()
 }

@@ -1,7 +1,8 @@
 services:
   app:
     build:
-      context: .
+      context: ..
+      dockerfile: deployments/Dockerfile
     image: orders-api:local
     environment:
       APP_ENV: development

@@ -6,15 +6,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/example/orders-api/internal/logging"
 	"github.com/go-co-op/gocron/v2"
-
-	"github.com/example/orders-api/internal/config"
 )
 
 type (
 	TaskScheduler struct {
-		logger    logging.Logger
+		logger    Logger
 		scheduler gocron.Scheduler
 		tasks     []Task
 	}
@@ -25,10 +22,15 @@ type (
 		ShouldStartImmediately() bool
 		Runnable(context.Context)
 	}
+
+	Logger interface {
+		Info(message string, args ...any)
+		Error(message string, args ...any)
+	}
 )
 
-func NewTaskScheduler(logger logging.Logger, cfg config.TaskSchedulerConfig) (*TaskScheduler, error) {
-	_ = cfg
+func NewTaskScheduler(logger Logger, worker string) (*TaskScheduler, error) {
+	_ = worker
 	inner, err := gocron.NewScheduler()
 
 	if err != nil {

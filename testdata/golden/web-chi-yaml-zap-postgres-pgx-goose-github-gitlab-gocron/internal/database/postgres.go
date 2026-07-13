@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"fmt"
+	"net/url"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -61,9 +62,16 @@ func (c *PostgresClient) Shutdown(ctx context.Context) error {
 }
 
 func postgresAddress(cfg config.PostgresConfig) string {
-	address := fmt.Sprintf("postgres://%s:%s@%s/%s", cfg.UserName, cfg.Password, cfg.Host, cfg.Database)
-	if cfg.SSLMode != "" {
-		address += "?sslmode=" + cfg.SSLMode
+	address := &url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(cfg.UserName, cfg.Password),
+		Host:   cfg.Host,
+		Path:   "/" + cfg.Database,
 	}
-	return address
+	if cfg.SSLMode != "" {
+		query := address.Query()
+		query.Set("sslmode", cfg.SSLMode)
+		address.RawQuery = query.Encode()
+	}
+	return address.String()
 }

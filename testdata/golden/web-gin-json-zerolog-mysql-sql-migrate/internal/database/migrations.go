@@ -18,15 +18,15 @@ import (
 )
 
 func (c *MySQLClient) RunMigrations(ctx context.Context) error {
-	return runSQLMigrations(ctx, "mysql", c.address, c.config.Migrations, c.logger)
+	return runSQLMigrations(ctx, "mysql", mysqlMigrationURL(c.config), c.config.Migrations, c.logger)
 }
 
 func (c *MySQLClient) RollbackMigration(ctx context.Context) error {
-	return rollbackSQLMigration(ctx, "mysql", c.address, c.config.Migrations, c.logger)
+	return rollbackSQLMigration(ctx, "mysql", mysqlMigrationURL(c.config), c.config.Migrations, c.logger)
 }
 
 func (c *MySQLClient) MigrationStatus(ctx context.Context) error {
-	return sqlMigrationStatus(ctx, "mysql", c.address, c.config.Migrations, c.logger)
+	return sqlMigrationStatus(ctx, "mysql", mysqlMigrationURL(c.config), c.config.Migrations, c.logger)
 }
 
 func runSQLMigrations(ctx context.Context, driver string, address string, source string, logger logging.Logger) error {
@@ -98,9 +98,6 @@ func newMigrateRunner(driver string, address string, source string) (*migrate.Mi
 func migrateDatabaseURL(driver string, address string) string {
 	if driver == "sqlite" && strings.HasPrefix(address, "file:") {
 		return "sqlite://" + strings.TrimPrefix(address, "file:")
-	}
-	if driver == "mysql" && !strings.HasPrefix(address, "mysql://") {
-		return "mysql://" + address
 	}
 	return address
 }

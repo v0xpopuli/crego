@@ -34,11 +34,15 @@ func (s *Server) routes() http.Handler {
 {{ end }}
 	var h http.Handler = mux
 {{ if eq .Recipe.Layout.Style "minimal" -}}
+{{ if .Recipe.Logging.RequestLogging -}}
 	h = Logging(s.logger)(h)
+{{ end -}}
 	h = RequestID(h)
 	h = Recover(s.logger)(h)
 {{ else -}}
+{{ if .Recipe.Logging.RequestLogging -}}
 	h = middleware.Logging(s.logger)(h)
+{{ end -}}
 	h = middleware.RequestID(h)
 	h = middleware.Recover(s.logger)(h)
 {{ end -}}
@@ -63,11 +67,15 @@ func (s *Server) routes() http.Handler {
 {{ if eq .Recipe.Layout.Style "minimal" -}}
 	router.Use(Recover(s.logger))
 	router.Use(RequestID)
+{{ if .Recipe.Logging.RequestLogging -}}
 	router.Use(Logging(s.logger))
+{{ end -}}
 {{ else -}}
 	router.Use(middleware.Recover(s.logger))
 	router.Use(middleware.RequestID)
+{{ if .Recipe.Logging.RequestLogging -}}
 	router.Use(middleware.Logging(s.logger))
+{{ end -}}
 {{ end -}}
 {{ if .Recipe.Observability.Health }}
 {{ if eq .Recipe.Layout.Style "minimal" -}}
@@ -103,9 +111,9 @@ func (s *Server) routes() http.Handler {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 {{ if eq .Recipe.Layout.Style "minimal" -}}
-	router.Use(Recover(s.logger), RequestID(), Logging(s.logger))
+	router.Use(Recover(s.logger), RequestID(){{ if .Recipe.Logging.RequestLogging }}, Logging(s.logger){{ end }})
 {{ else -}}
-	router.Use(middleware.Recover(s.logger), middleware.RequestID(), middleware.Logging(s.logger))
+	router.Use(middleware.Recover(s.logger), middleware.RequestID(){{ if .Recipe.Logging.RequestLogging }}, middleware.Logging(s.logger){{ end }})
 {{ end -}}
 {{ if .Recipe.Observability.Health }}
 {{ if eq .Recipe.Layout.Style "minimal" -}}
@@ -137,11 +145,15 @@ func (s *Server) registerRoutes() {
 {{ if eq .Recipe.Layout.Style "minimal" -}}
 	s.echo.Use(Recover(s.logger))
 	s.echo.Use(RequestID)
+{{ if .Recipe.Logging.RequestLogging -}}
 	s.echo.Use(Logging(s.logger))
+{{ end -}}
 {{ else -}}
 	s.echo.Use(middleware.Recover(s.logger))
 	s.echo.Use(middleware.RequestID)
+{{ if .Recipe.Logging.RequestLogging -}}
 	s.echo.Use(middleware.Logging(s.logger))
+{{ end -}}
 {{ end -}}
 {{ if .Recipe.Observability.Health }}
 {{ if eq .Recipe.Layout.Style "minimal" -}}
@@ -172,11 +184,15 @@ func (s *Server) registerRoutes() {
 {{ if eq .Recipe.Layout.Style "minimal" -}}
 	s.app.Use(Recover(s.logger))
 	s.app.Use(RequestID)
+{{ if .Recipe.Logging.RequestLogging -}}
 	s.app.Use(Logging(s.logger))
+{{ end -}}
 {{ else -}}
 	s.app.Use(middleware.Recover(s.logger))
 	s.app.Use(middleware.RequestID)
+{{ if .Recipe.Logging.RequestLogging -}}
 	s.app.Use(middleware.Logging(s.logger))
+{{ end -}}
 {{ end -}}
 {{ if .Recipe.Observability.Health }}
 {{ if eq .Recipe.Layout.Style "minimal" -}}

@@ -65,7 +65,7 @@ func (s *ResolverTestSuite) TestResolveDeploymentAndCIFileTargets() {
 	targets, err := RenderFileTargets(r, plan)
 	s.Require().NoError(err)
 	s.Require().Contains(templateTargets(targets), "deployments/Dockerfile")
-	s.Require().Contains(templateTargets(targets), "deployments/.dockerignore")
+	s.Require().Contains(templateTargets(targets), "deployments/Dockerfile.dockerignore")
 	s.Require().Contains(templateTargets(targets), "deployments/docker-compose.yml")
 	s.Require().Contains(templateTargets(targets), ".github/workflows/test.yml")
 	s.Require().Contains(templateTargets(targets), ".gitlab-ci.yml")
@@ -251,8 +251,8 @@ func (s *ResolverTestSuite) TestAddsExactDatabaseGoModules() {
 			driver:    recipe.DatabaseDriverMySQL,
 			framework: recipe.DatabaseFrameworkGORM,
 			migration: recipe.DatabaseMigrationsMigrate,
-			expected:  []string{"gorm.io/gorm", "gorm.io/driver/mysql", "github.com/golang-migrate/migrate/v4"},
-			absent:    []string{"github.com/go-sql-driver/mysql", "github.com/pressly/goose/v3"},
+			expected:  []string{"github.com/go-sql-driver/mysql", "gorm.io/gorm", "gorm.io/driver/mysql", "github.com/golang-migrate/migrate/v4"},
+			absent:    []string{"github.com/pressly/goose/v3"},
 		},
 		{
 			name:      "sqlite sql goose",

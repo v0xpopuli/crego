@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -33,20 +34,34 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	if err != nil {
 		return nil, fmt.Errorf("configure logger: %w", err)
 	}
+	cleanup := []func(){logger.Sync}
+	defer func() {
+		for index := len(cleanup) - 1; index >= 0; index-- {
+			cleanup[index]()
+		}
+	}()
 
 	postgresClient, err := database.NewPostgresClient(ctx, cfg.Database.Postgres, logger)
 	if err != nil {
 		return nil, fmt.Errorf("connect postgres database: %w", err)
 	}
+	cleanup = append(cleanup, func() { _ = postgresClient.Shutdown(context.Background()) })
 
-	taskScheduler, err := scheduler.NewTaskScheduler(logger, cfg.TaskScheduler)
+	taskScheduler, err := scheduler.NewTaskScheduler(logger, cfg.TaskScheduler.Worker)
 	if err != nil {
 		return nil, fmt.Errorf("configure task scheduler: %w", err)
 	}
+	cleanup = append(cleanup, func() { taskScheduler.Shutdown(context.Background()) })
 
-	taskScheduler.AddTasks(tasks.NewExampleCleanupTask(logger, cfg.TaskScheduler.Tasks.ExampleCleanup))
+	taskScheduler.AddTasks(tasks.NewExampleCleanupTask(logger, tasks.ExampleCleanupTaskConfig{
+		Name:                   cfg.TaskScheduler.Tasks.ExampleCleanup.Name,
+		Cron:                   cfg.TaskScheduler.Tasks.ExampleCleanup.Cron,
+		ShouldStartImmediately: cfg.TaskScheduler.Tasks.ExampleCleanup.ShouldStartImmediately,
+		BatchSize:              cfg.TaskScheduler.Tasks.ExampleCleanup.BatchSize,
+		RetentionPeriod:        cfg.TaskScheduler.Tasks.ExampleCleanup.RetentionPeriod,
+	}))
 
-	return &Application{
+	application := &Application{
 		ctx:       ctx,
 		startedAt: time.Now(),
 		logger:    logger,
@@ -55,11 +70,27 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 		)),
 		postgresClient: postgresClient,
 		taskScheduler:  taskScheduler,
-	}, nil
+	}
+	cleanup = nil
+	return application, nil
 }
 
-func (a *Application) Run() error {
+func (a *Application) Run() (runErr error) {
 	defer a.logger.Sync()
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := a.Shutdown(shutdownCtx); err != nil {
+			if runErr == nil {
+				runErr = err
+				return
+			}
+			a.logger.Error("application shutdown failed", "error", err)
+			return
+		}
+		a.logger.Info("application shut down gracefully")
+	}()
 
 	if err := a.postgresClient.RunMigrations(a.ctx); err != nil {
 		return fmt.Errorf("run postgres migrations: %w", err)
@@ -87,34 +118,28 @@ func (a *Application) Run() error {
 	}
 
 	a.logger.Info("application shutdown initiated")
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	if err := a.Shutdown(shutdownCtx); err != nil {
-		return err
-	}
-	a.logger.Info("application shut down gracefully")
 	return nil
+
 }
 
 func (a *Application) Shutdown(ctx context.Context) error {
+	var shutdownErrors []error
 
 	if a.taskScheduler != nil {
 		a.taskScheduler.Shutdown(ctx)
 	}
 	if err := a.server.Shutdown(ctx); err != nil {
 		a.logger.Error("shutdown failed", "error", err)
-		return fmt.Errorf("shutdown server: %w", err)
+		shutdownErrors = append(shutdownErrors, fmt.Errorf("shutdown server: %w", err))
 	}
 
 	if a.postgresClient != nil {
 		if err := a.postgresClient.Shutdown(ctx); err != nil {
 			a.logger.Error("postgres database shutdown failed", "error", err)
-			return fmt.Errorf("shutdown postgres database: %w", err)
+			shutdownErrors = append(shutdownErrors, fmt.Errorf("shutdown postgres database: %w", err))
 		}
 	}
-	return nil
+	return errors.Join(shutdownErrors...)
 }
 
 func readinessChecks(checkers ...handler.Checker) handler.Checks {

@@ -4,9 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+
+	"net/url"
+
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
+	mysqldriver "github.com/go-sql-driver/mysql"
 
 	"github.com/example/orders-api/internal/config"
 	"github.com/example/orders-api/internal/logging"
@@ -62,7 +65,22 @@ func (c *MySQLClient) Shutdown(ctx context.Context) error {
 }
 
 func mysqlDSN(cfg config.MySQLConfig) string {
-	address := fmt.Sprintf("%s:%s@tcp(%s)/%s", cfg.UserName, cfg.Password, cfg.Host, cfg.Database)
+	driverConfig := mysqldriver.NewConfig()
+	driverConfig.User = cfg.UserName
+	driverConfig.Passwd = cfg.Password
+	driverConfig.Net = "tcp"
+	driverConfig.Addr = cfg.Host
+	driverConfig.DBName = cfg.Database
+	driverConfig.ParseTime = cfg.ParseTime
+	return driverConfig.FormatDSN()
+}
+
+func mysqlMigrationURL(cfg config.MySQLConfig) string {
+	credentials := ""
+	if cfg.UserName != "" {
+		credentials = url.UserPassword(cfg.UserName, cfg.Password).String() + "@"
+	}
+	address := fmt.Sprintf("mysql://%stcp(%s)/%s", credentials, cfg.Host, url.PathEscape(cfg.Database))
 	if cfg.ParseTime {
 		address += "?parseTime=true"
 	}

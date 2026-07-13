@@ -247,7 +247,7 @@ func defaultComponents() []Component {
 			Description: "Dockerfile for containerized builds.",
 			Files: []TemplateFile{
 				{Source: "web/Dockerfile.tmpl", Target: "deployments/Dockerfile"},
-				{Source: "web/dockerignore.tmpl", Target: "deployments/.dockerignore"},
+				{Source: "web/dockerignore.tmpl", Target: "deployments/Dockerfile.dockerignore"},
 			},
 		},
 		{

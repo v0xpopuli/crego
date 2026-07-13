@@ -41,7 +41,7 @@ func (s *DeploymentTemplateTestSuite) TestRendersDockerComposeAndCIFiles() {
 
 	s.Require().NoError(err)
 	s.Require().Contains(result.FilesWritten, "deployments/Dockerfile")
-	s.Require().Contains(result.FilesWritten, "deployments/.dockerignore")
+	s.Require().Contains(result.FilesWritten, "deployments/Dockerfile.dockerignore")
 	s.Require().Contains(result.FilesWritten, "deployments/docker-compose.yml")
 	s.Require().Contains(result.FilesWritten, ".github/workflows/test.yml")
 	s.Require().Contains(result.FilesWritten, ".gitlab-ci.yml")
@@ -54,13 +54,21 @@ func (s *DeploymentTemplateTestSuite) TestRendersDockerComposeAndCIFiles() {
 	s.Require().Contains(dockerfile, "COPY --from=build /src/configs ./configs")
 	s.Require().Contains(dockerfile, "USER app")
 	s.Require().Contains(dockerfile, "EXPOSE 8080")
+	s.Require().Contains(dockerfile, "CGO_ENABLED=0")
+	s.Require().NotContains(dockerfile, "apk add --no-cache build-base")
+	s.Require().NotContains(dockerfile, "GOARCH=")
 
 	compose := readGeneratedFile(s, outDir, "deployments/docker-compose.yml")
+	s.Require().Contains(compose, "context: ..")
+	s.Require().Contains(compose, "dockerfile: deployments/Dockerfile")
 	s.Require().Contains(compose, "DATABASE_POSTGRES_HOST: postgres:5432")
 	s.Require().Contains(compose, "DATABASE_POSTGRES_DATABASE: app")
 	s.Require().Contains(compose, "CONFIG_PATH: configs/config.yaml")
 	s.Require().Contains(compose, "postgres:")
 	s.Require().NotContains(compose, "mysql:")
+
+	makefile := readGeneratedFile(s, outDir, "Makefile")
+	s.Require().Contains(makefile, "docker build -f deployments/Dockerfile -t $(IMAGE_NAME) .")
 
 	githubActions := readGeneratedFile(s, outDir, ".github/workflows/test.yml")
 	s.Require().Contains(githubActions, "uses: actions/setup-go@v5")
@@ -77,6 +85,38 @@ func (s *DeploymentTemplateTestSuite) TestRendersDockerComposeAndCIFiles() {
 	s.Require().Contains(azurePipelines, "version: '1.25'")
 	s.Require().Contains(azurePipelines, "go mod tidy")
 	s.Require().Contains(azurePipelines, "go test -v ./...")
+}
+
+func (s *DeploymentTemplateTestSuite) TestEnablesCGOForGormSQLiteImage() {
+	r := generatorTestRecipe()
+	r.Database.Driver = recipe.DatabaseDriverSQLite
+	r.Database.Framework = recipe.DatabaseFrameworkGORM
+	r.Deployment.Docker = true
+
+	plan, err := Resolve(component.NewRegistry(), r)
+	s.Require().NoError(err)
+	outDir := s.T().TempDir()
+	_, err = NewGenerator(templatefs.FS).Generate(context.Background(), r, plan, Options{OutDir: outDir})
+	s.Require().NoError(err)
+
+	dockerfile := readGeneratedFile(s, outDir, "deployments/Dockerfile")
+	s.Require().Contains(dockerfile, "RUN apk add --no-cache build-base")
+	s.Require().Contains(dockerfile, "CGO_ENABLED=1")
+}
+
+func (s *DeploymentTemplateTestSuite) TestDocumentsAzureOnlyCI() {
+	r := generatorTestRecipe()
+	r.CI.AzurePipelines = true
+
+	plan, err := Resolve(component.NewRegistry(), r)
+	s.Require().NoError(err)
+	outDir := s.T().TempDir()
+	_, err = NewGenerator(templatefs.FS).Generate(context.Background(), r, plan, Options{OutDir: outDir})
+	s.Require().NoError(err)
+
+	readme := readGeneratedFile(s, outDir, "README.md")
+	s.Require().Contains(readme, "CI: Azure Pipelines")
+	s.Require().Contains(readme, "Azure Pipelines is configured in `azure-pipelines.yml`.")
 }
 
 func (s *DeploymentTemplateTestSuite) TestComposeOmitsDatabaseServiceWhenDatabaseIsNone() {

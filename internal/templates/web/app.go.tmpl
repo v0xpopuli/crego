@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -69,47 +70,65 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	if err != nil {
 		return nil, fmt.Errorf("configure logger: %w", err)
 	}
+	cleanup := []func(){logger.Sync}
+	defer func() {
+		for index := len(cleanup) - 1; index >= 0; index-- {
+			cleanup[index]()
+		}
+	}()
 
 {{ if hasDatabase "postgres" }}
 	postgresClient, err := {{ if eq .Recipe.Layout.Style "minimal" }}NewPostgresClient{{ else }}database.NewPostgresClient{{ end }}(ctx, cfg.Database.Postgres, logger)
 	if err != nil {
 		return nil, fmt.Errorf("connect postgres database: %w", err)
 	}
+	cleanup = append(cleanup, func() { _ = postgresClient.Shutdown(context.Background()) })
 {{ end -}}
 {{ if hasDatabase "mysql" }}
 	mysqlClient, err := {{ if eq .Recipe.Layout.Style "minimal" }}NewMySQLClient{{ else }}database.NewMySQLClient{{ end }}(ctx, cfg.Database.MySQL, logger)
 	if err != nil {
 		return nil, fmt.Errorf("connect mysql database: %w", err)
 	}
+	cleanup = append(cleanup, func() { _ = mysqlClient.Shutdown(context.Background()) })
 {{ end -}}
 {{ if hasDatabase "sqlite" }}
 	sqliteClient, err := {{ if eq .Recipe.Layout.Style "minimal" }}NewSQLiteClient{{ else }}database.NewSQLiteClient{{ end }}(ctx, cfg.Database.SQLite, logger)
 	if err != nil {
 		return nil, fmt.Errorf("connect sqlite database: %w", err)
 	}
+	cleanup = append(cleanup, func() { _ = sqliteClient.Shutdown(context.Background()) })
 {{ end -}}
 {{ if hasDatabase "redis" }}
 	redisClient, err := {{ if eq .Recipe.Layout.Style "minimal" }}NewRedisClient{{ else }}database.NewRedisClient{{ end }}(ctx, cfg.Database.Redis, logger)
 	if err != nil {
 		return nil, fmt.Errorf("connect redis database: %w", err)
 	}
+	cleanup = append(cleanup, func() { _ = redisClient.Shutdown(context.Background()) })
 {{ end -}}
 {{ if hasDatabase "mongodb" }}
 	mongoDBClient, err := {{ if eq .Recipe.Layout.Style "minimal" }}NewMongoDBClient{{ else }}database.NewMongoDBClient{{ end }}(ctx, cfg.Database.MongoDB, logger)
 	if err != nil {
 		return nil, fmt.Errorf("connect mongodb database: %w", err)
 	}
+	cleanup = append(cleanup, func() { _ = mongoDBClient.Shutdown(context.Background()) })
 {{ end -}}
 {{ if schedulerEnabled }}
-	taskScheduler, err := scheduler.NewTaskScheduler(logger, cfg.TaskScheduler{{ if gormDistributedLock }}{{ if hasDatabase "postgres" }}, scheduler.WithGormDatabase(postgresClient.Database){{ else if hasDatabase "mysql" }}, scheduler.WithGormDatabase(mysqlClient.Database){{ else if hasDatabase "sqlite" }}, scheduler.WithGormDatabase(sqliteClient.Database){{ end }}{{ end }})
+	taskScheduler, err := scheduler.NewTaskScheduler(logger, cfg.TaskScheduler.Worker{{ if gormDistributedLock }}{{ if hasDatabase "postgres" }}, scheduler.WithGormDatabase(postgresClient.Database){{ else if hasDatabase "mysql" }}, scheduler.WithGormDatabase(mysqlClient.Database){{ else if hasDatabase "sqlite" }}, scheduler.WithGormDatabase(sqliteClient.Database){{ end }}{{ end }})
 	if err != nil {
 		return nil, fmt.Errorf("configure task scheduler: %w", err)
 	}
+	cleanup = append(cleanup, func() { taskScheduler.Shutdown(context.Background()) })
 
-	taskScheduler.AddTasks(tasks.NewExampleCleanupTask(logger, cfg.TaskScheduler.Tasks.ExampleCleanup))
+	taskScheduler.AddTasks(tasks.NewExampleCleanupTask(logger, tasks.ExampleCleanupTaskConfig{
+		Name:                   cfg.TaskScheduler.Tasks.ExampleCleanup.Name,
+		Cron:                   cfg.TaskScheduler.Tasks.ExampleCleanup.Cron,
+		ShouldStartImmediately: cfg.TaskScheduler.Tasks.ExampleCleanup.ShouldStartImmediately,
+		BatchSize:              cfg.TaskScheduler.Tasks.ExampleCleanup.BatchSize,
+		RetentionPeriod:        cfg.TaskScheduler.Tasks.ExampleCleanup.RetentionPeriod,
+	}))
 
 {{ end -}}
-	return &Application{
+	application := &Application{
 		ctx:       ctx,
 		startedAt: time.Now(),
 		logger:    logger,
@@ -158,11 +177,27 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 {{ if schedulerEnabled -}}
 		taskScheduler: taskScheduler,
 {{ end -}}
-	}, nil
+	}
+	cleanup = nil
+	return application, nil
 }
 
-func (a *Application) Run() error {
+func (a *Application) Run() (runErr error) {
 	defer a.logger.Sync()
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := a.Shutdown(shutdownCtx); err != nil {
+			if runErr == nil {
+				runErr = err
+				return
+			}
+			a.logger.Error("application shutdown failed", "error", err)
+			return
+		}
+		a.logger.Info("application shut down gracefully")
+	}()
 {{ if sqlMigrations .Recipe.Database.Migrations }}
 {{ if hasDatabase "postgres" }}
 	if err := a.postgresClient.RunMigrations(a.ctx); err != nil {
@@ -194,6 +229,7 @@ func (a *Application) Run() error {
 
 	a.logger.Info("application started", "took", time.Since(a.startedAt).String())
 
+{{ if .Recipe.Server.GracefulShutdown }}
 	select {
 	case err := <-errCh:
 		if err != nil {
@@ -205,18 +241,19 @@ func (a *Application) Run() error {
 	}
 
 	a.logger.Info("application shutdown initiated")
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	if err := a.Shutdown(shutdownCtx); err != nil {
-		return err
-	}
-	a.logger.Info("application shut down gracefully")
 	return nil
+{{ else }}
+	err := <-errCh
+	if err != nil {
+		a.logger.Error("server failed", "error", err)
+		return fmt.Errorf("run server: %w", err)
+	}
+	return nil
+{{ end }}
 }
 
 func (a *Application) Shutdown(ctx context.Context) error {
+	var shutdownErrors []error
 {{ if schedulerEnabled }}
 	if a.taskScheduler != nil {
 		a.taskScheduler.Shutdown(ctx)
@@ -224,13 +261,13 @@ func (a *Application) Shutdown(ctx context.Context) error {
 {{ end -}}
 	if err := a.server.Shutdown(ctx); err != nil {
 		a.logger.Error("shutdown failed", "error", err)
-		return fmt.Errorf("shutdown server: %w", err)
+		shutdownErrors = append(shutdownErrors, fmt.Errorf("shutdown server: %w", err))
 	}
 {{ if hasDatabase "postgres" }}
 	if a.postgresClient != nil {
 		if err := a.postgresClient.Shutdown(ctx); err != nil {
 			a.logger.Error("postgres database shutdown failed", "error", err)
-			return fmt.Errorf("shutdown postgres database: %w", err)
+			shutdownErrors = append(shutdownErrors, fmt.Errorf("shutdown postgres database: %w", err))
 		}
 	}
 {{ end -}}
@@ -238,7 +275,7 @@ func (a *Application) Shutdown(ctx context.Context) error {
 	if a.mysqlClient != nil {
 		if err := a.mysqlClient.Shutdown(ctx); err != nil {
 			a.logger.Error("mysql database shutdown failed", "error", err)
-			return fmt.Errorf("shutdown mysql database: %w", err)
+			shutdownErrors = append(shutdownErrors, fmt.Errorf("shutdown mysql database: %w", err))
 		}
 	}
 {{ end -}}
@@ -246,7 +283,7 @@ func (a *Application) Shutdown(ctx context.Context) error {
 	if a.sqliteClient != nil {
 		if err := a.sqliteClient.Shutdown(ctx); err != nil {
 			a.logger.Error("sqlite database shutdown failed", "error", err)
-			return fmt.Errorf("shutdown sqlite database: %w", err)
+			shutdownErrors = append(shutdownErrors, fmt.Errorf("shutdown sqlite database: %w", err))
 		}
 	}
 {{ end -}}
@@ -254,7 +291,7 @@ func (a *Application) Shutdown(ctx context.Context) error {
 	if a.redisClient != nil {
 		if err := a.redisClient.Shutdown(ctx); err != nil {
 			a.logger.Error("redis database shutdown failed", "error", err)
-			return fmt.Errorf("shutdown redis database: %w", err)
+			shutdownErrors = append(shutdownErrors, fmt.Errorf("shutdown redis database: %w", err))
 		}
 	}
 {{ end -}}
@@ -262,11 +299,11 @@ func (a *Application) Shutdown(ctx context.Context) error {
 	if a.mongoDBClient != nil {
 		if err := a.mongoDBClient.Shutdown(ctx); err != nil {
 			a.logger.Error("mongodb database shutdown failed", "error", err)
-			return fmt.Errorf("shutdown mongodb database: %w", err)
+			shutdownErrors = append(shutdownErrors, fmt.Errorf("shutdown mongodb database: %w", err))
 		}
 	}
 {{ end -}}
-	return nil
+	return errors.Join(shutdownErrors...)
 }
 
 {{ if anyDatabaseEnabled -}}

@@ -6,19 +6,16 @@ import (
 	"strings"
 	"time"
 
-	"{{ .ModulePath }}/internal/logging"
 	"github.com/go-co-op/gocron/v2"
 {{ if gormDistributedLock }}
 	gormlock "github.com/go-co-op/gocron-gorm-lock/v2"
 	"gorm.io/gorm"
 {{ end }}
-
-	"{{ .ModulePath }}/internal/config"
 )
 
 type (
 	TaskScheduler struct {
-		logger    logging.Logger
+		logger    Logger
 		scheduler gocron.Scheduler
 		tasks     []Task
 {{ if gormDistributedLock }}
@@ -27,11 +24,16 @@ type (
 	}
 
 	Task interface {
-    		Name() string
-    		Cron() string
-    		ShouldStartImmediately() bool
-    		Runnable(context.Context)
-    }
+		Name() string
+		Cron() string
+		ShouldStartImmediately() bool
+		Runnable(context.Context)
+	}
+
+	Logger interface {
+		Info(message string, args ...any)
+		Error(message string, args ...any)
+	}
 
 {{ if gormDistributedLock }}
 	Option func(*options)
@@ -49,7 +51,7 @@ func WithGormDatabase(db *gorm.DB) Option {
 	}
 }
 
-func NewTaskScheduler(logger logging.Logger, cfg config.TaskSchedulerConfig, opts ...Option) (*TaskScheduler, error) {
+func NewTaskScheduler(logger Logger, worker string, opts ...Option) (*TaskScheduler, error) {
 	resolved := options{}
 	for _, opt := range opts {
 		opt(&resolved)
@@ -58,14 +60,14 @@ func NewTaskScheduler(logger logging.Logger, cfg config.TaskSchedulerConfig, opt
 	schedulerOptions := make([]gocron.SchedulerOption, 0, 1)
 	var locker *gormlock.GormLocker
 	if resolved.gormDB != nil {
-		if cfg.Worker == "" {
+		if worker == "" {
 			return nil, fmt.Errorf("task scheduler worker is required")
 		}
 		if err := resolved.gormDB.AutoMigrate(&gormlock.CronJobLock{}); err != nil {
 			return nil, fmt.Errorf("migrate task scheduler locks: %w", err)
 		}
 		var err error
-		locker, err = gormlock.NewGormLocker(resolved.gormDB, cfg.Worker)
+		locker, err = gormlock.NewGormLocker(resolved.gormDB, worker)
 		if err != nil {
 			return nil, fmt.Errorf("configure task scheduler lock provider: %w", err)
 		}
@@ -74,8 +76,8 @@ func NewTaskScheduler(logger logging.Logger, cfg config.TaskSchedulerConfig, opt
 
 	inner, err := gocron.NewScheduler(schedulerOptions...)
 {{ else }}
-func NewTaskScheduler(logger logging.Logger, cfg config.TaskSchedulerConfig) (*TaskScheduler, error) {
-	_ = cfg
+func NewTaskScheduler(logger Logger, worker string) (*TaskScheduler, error) {
+	_ = worker
 	inner, err := gocron.NewScheduler()
 {{ end }}
 	if err != nil {

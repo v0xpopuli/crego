@@ -3,17 +3,29 @@ package tasks
 import (
 	"context"
 	"time"
-
-	"github.com/example/orders-api/internal/config"
-	"github.com/example/orders-api/internal/logging"
 )
 
-type ExampleCleanupTask struct {
-	logger logging.Logger
-	config config.ExampleCleanupTaskConfig
-}
+type (
+	ExampleCleanupTask struct {
+		logger Logger
+		config ExampleCleanupTaskConfig
+	}
 
-func NewExampleCleanupTask(logger logging.Logger, cfg config.ExampleCleanupTaskConfig) *ExampleCleanupTask {
+	ExampleCleanupTaskConfig struct {
+		Name                   string
+		Cron                   string
+		ShouldStartImmediately bool
+		BatchSize              int
+		RetentionPeriod        string
+	}
+
+	Logger interface {
+		Info(message string, args ...any)
+		Error(message string, args ...any)
+	}
+)
+
+func NewExampleCleanupTask(logger Logger, cfg ExampleCleanupTaskConfig) *ExampleCleanupTask {
 	return &ExampleCleanupTask{logger: logger, config: cfg}
 }
 

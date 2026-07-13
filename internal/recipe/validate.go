@@ -75,6 +75,14 @@ func Validate(r *Recipe) error {
 	if validDatabaseDriver && validDatabaseFramework {
 		problems = appendDatabaseCompatibilityProblems(problems, r.Database)
 	}
+	if r.Project.Type != "" && r.Project.Type != ProjectTypeWeb && validDatabaseDriver {
+		for _, driver := range drivers {
+			if driver != DatabaseDriverNone {
+				problems = append(problems, "database integrations are only supported for project.type=web")
+				break
+			}
+		}
+	}
 
 	if len(problems) > 0 {
 		return &ValidationError{Problems: problems}

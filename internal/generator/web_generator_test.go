@@ -254,7 +254,7 @@ func (s *WebGeneratorTestSuite) TestGeneratesWebServiceMatrix() {
 
 			appGo := s.readGenerated(outDir, "internal/app/app.go")
 			s.Require().Contains(appGo, "type Application struct")
-			s.Require().Contains(appGo, "func (a *Application) Run() error")
+			s.Require().Contains(appGo, "func (a *Application) Run() (runErr error)")
 		})
 	}
 }
@@ -343,12 +343,12 @@ func (s *WebGeneratorTestSuite) TestGeneratesDatabaseMatrix() {
 				"scripts/migrations/000001_init.down.sql",
 			},
 			expectedModule: []string{
+				"github.com/go-sql-driver/mysql",
 				"gorm.io/gorm",
 				"gorm.io/driver/mysql",
 				"github.com/golang-migrate/migrate/v4",
 			},
 			absentModule: []string{
-				"github.com/go-sql-driver/mysql",
 				"github.com/pressly/goose/v3",
 			},
 			expectedConfig: []string{
@@ -592,13 +592,15 @@ func (s *WebGeneratorTestSuite) TestGeneratesGocronScheduler() {
 	s.Require().Contains(schedulerGo, "gocron.CronJob(task.Cron(), cronHasSeconds(task.Cron()))")
 	s.Require().Contains(schedulerGo, "gocron.WithSingletonMode(gocron.LimitModeReschedule)")
 	s.Require().Contains(schedulerGo, "gocron.WithStartAt(gocron.WithStartImmediately())")
-	s.Require().Contains(schedulerGo, `"github.com/example/orders-api/internal/config"`)
-	s.Require().Contains(schedulerGo, "cfg config.TaskSchedulerConfig")
-	s.Require().NotContains(schedulerGo, "RuntimeConfig")
+	s.Require().Contains(schedulerGo, "func NewTaskScheduler(logger Logger, worker string)")
+	s.Require().NotContains(schedulerGo, `"github.com/example/orders-api/internal/config"`)
+	s.Require().NotContains(schedulerGo, `"github.com/example/orders-api/internal/logging"`)
 
 	exampleCleanupGo := s.readGenerated(outDir, "internal/scheduler/tasks/example_cleanup.go")
-	s.Require().Contains(exampleCleanupGo, `"github.com/example/orders-api/internal/config"`)
-	s.Require().Contains(exampleCleanupGo, "cfg config.ExampleCleanupTaskConfig")
+	s.Require().Contains(exampleCleanupGo, "ExampleCleanupTaskConfig struct")
+	s.Require().Contains(exampleCleanupGo, "cfg ExampleCleanupTaskConfig")
+	s.Require().NotContains(exampleCleanupGo, `"github.com/example/orders-api/internal/config"`)
+	s.Require().NotContains(exampleCleanupGo, `"github.com/example/orders-api/internal/logging"`)
 	s.Require().Contains(exampleCleanupGo, "t.config.Name")
 	s.Require().Contains(exampleCleanupGo, "t.config.Cron")
 	s.Require().Contains(exampleCleanupGo, "t.config.BatchSize")
@@ -609,6 +611,121 @@ func (s *WebGeneratorTestSuite) TestGeneratesGocronScheduler() {
 	readme := s.readGenerated(outDir, "README.md")
 	s.Require().Contains(readme, "supported recipe values are `none` and `gocron`")
 	s.Require().Contains(readme, "5-field syntax and optional 6-field syntax")
+}
+
+func (s *WebGeneratorTestSuite) TestGeneratesGocronSchedulerForMinimalLayout() {
+	r := webRecipe(recipe.LayoutStyleMinimal, recipe.ServerFrameworkNetHTTP, recipe.ConfigurationFormatEnv, recipe.LoggingFrameworkSlog)
+	r.TaskScheduler = recipe.TaskSchedulerGocron
+	plan, err := Resolve(component.NewRegistry(), r)
+	s.Require().NoError(err)
+
+	outDir := s.T().TempDir()
+	_, err = NewGenerator(templatefs.FS).Generate(context.Background(), r, plan, Options{OutDir: outDir})
+	s.Require().NoError(err)
+
+	schedulerGo := s.readGenerated(outDir, "internal/scheduler/scheduler.go")
+	s.Require().NotContains(schedulerGo, r.Project.Module+"/internal/config")
+	s.Require().NotContains(schedulerGo, r.Project.Module+"/internal/logging")
+	exampleCleanupGo := s.readGenerated(outDir, "internal/scheduler/tasks/example_cleanup.go")
+	s.Require().NotContains(exampleCleanupGo, r.Project.Module+"/internal/config")
+	s.Require().NotContains(exampleCleanupGo, r.Project.Module+"/internal/logging")
+	appGo := s.readGenerated(outDir, "internal/app/app.go")
+	s.Require().Contains(appGo, "scheduler.NewTaskScheduler(logger, cfg.TaskScheduler.Worker)")
+	s.Require().Contains(appGo, "tasks.ExampleCleanupTaskConfig{")
+}
+
+func (s *WebGeneratorTestSuite) TestHonorsRequestLogging() {
+	for _, framework := range []string{
+		recipe.ServerFrameworkNetHTTP,
+		recipe.ServerFrameworkChi,
+		recipe.ServerFrameworkGin,
+		recipe.ServerFrameworkEcho,
+		recipe.ServerFrameworkFiber,
+	} {
+		s.Run(framework, func() {
+			r := webRecipe(recipe.LayoutStyleLayered, framework, recipe.ConfigurationFormatEnv, recipe.LoggingFrameworkSlog)
+			r.Logging.RequestLogging = false
+			routesWithoutLogging := s.renderWebFile(r, "internal/server/routes.go")
+			s.Require().NotContains(routesWithoutLogging, "middleware.Logging(s.logger)")
+
+			r.Logging.RequestLogging = true
+			routesWithLogging := s.renderWebFile(r, "internal/server/routes.go")
+			s.Require().Contains(routesWithLogging, "middleware.Logging(s.logger)")
+		})
+	}
+}
+
+func (s *WebGeneratorTestSuite) TestHonorsDisabledGracefulShutdown() {
+	recipePath := filepath.Join(s.T().TempDir(), "crego.yaml")
+	err := os.WriteFile(recipePath, []byte(`version: v1
+project:
+  name: orders-api
+  module: github.com/example/orders-api
+  type: web
+server:
+  framework: nethttp
+  graceful_shutdown: false
+`), 0o600)
+	s.Require().NoError(err)
+	r, err := recipe.Load(recipePath)
+	s.Require().NoError(err)
+	s.Require().False(r.Server.GracefulShutdown)
+
+	mainGo := s.renderWebFile(r, "cmd/orders-api/main.go")
+	s.Require().Contains(mainGo, "ctx := context.Background()")
+	s.Require().NotContains(mainGo, "signal.NotifyContext")
+	s.Require().NotContains(mainGo, `"os/signal"`)
+	appGo := s.renderWebFile(r, "internal/app/app.go")
+	s.Require().NotContains(appGo, "case <-a.ctx.Done()")
+}
+
+func (s *WebGeneratorTestSuite) TestGeneratesEscapedDatabaseAddresses() {
+	cases := []struct {
+		name       string
+		driver     string
+		framework  string
+		migrations string
+		target     string
+		expected   []string
+	}{
+		{
+			name:       "postgres",
+			driver:     recipe.DatabaseDriverPostgres,
+			framework:  recipe.DatabaseFrameworkPGX,
+			migrations: recipe.DatabaseMigrationsNone,
+			target:     "internal/database/postgres.go",
+			expected:   []string{"url.UserPassword(cfg.UserName, cfg.Password)", "query.Set(\"sslmode\", cfg.SSLMode)"},
+		},
+		{
+			name:       "mysql",
+			driver:     recipe.DatabaseDriverMySQL,
+			framework:  recipe.DatabaseFrameworkDatabaseSQL,
+			migrations: recipe.DatabaseMigrationsMigrate,
+			target:     "internal/database/mysql.go",
+			expected:   []string{"mysqldriver.NewConfig()", "driverConfig.FormatDSN()", "url.UserPassword(cfg.UserName, cfg.Password)"},
+		},
+		{
+			name:       "mongodb",
+			driver:     recipe.DatabaseDriverMongoDB,
+			framework:  recipe.DatabaseFrameworkNone,
+			migrations: recipe.DatabaseMigrationsNone,
+			target:     "internal/database/mongodb.go",
+			expected:   []string{"url.UserPassword(cfg.UserName, cfg.Password)", "return address.String()"},
+		},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			r := webRecipe(recipe.LayoutStyleLayered, recipe.ServerFrameworkChi, recipe.ConfigurationFormatEnv, recipe.LoggingFrameworkSlog)
+			r.Database.Driver = tc.driver
+			r.Database.Framework = tc.framework
+			r.Database.Migrations = tc.migrations
+			content := s.renderWebFile(r, tc.target)
+			for _, expected := range tc.expected {
+				s.Require().Contains(content, expected)
+			}
+		})
+	}
 }
 
 func (s *WebGeneratorTestSuite) TestGeneratesGocronGormDistributedLock() {
@@ -696,6 +813,8 @@ func (s *WebGeneratorTestSuite) TestGeneratesMultipleDatabaseProject() {
 	s.Require().Contains(appGo, "postgresClient:")
 	s.Require().Contains(appGo, "redisClient:")
 	s.Require().Contains(appGo, "mongoDBClient:")
+	s.Require().Contains(appGo, "cleanup = append(cleanup")
+	s.Require().Contains(appGo, "return errors.Join(shutdownErrors...)")
 	s.Require().NotContains(appGo, "newPostgresClient")
 }
 
@@ -705,6 +824,17 @@ func (s *WebGeneratorTestSuite) readGenerated(outDir string, target string) stri
 	data, err := os.ReadFile(filepath.Join(outDir, target))
 	s.Require().NoError(err)
 	return string(data)
+}
+
+func (s *WebGeneratorTestSuite) renderWebFile(r *recipe.Recipe, target string) string {
+	s.T().Helper()
+
+	plan, err := Resolve(component.NewRegistry(), r)
+	s.Require().NoError(err)
+	outDir := s.T().TempDir()
+	_, err = NewGenerator(templatefs.FS).Generate(context.Background(), r, plan, Options{OutDir: outDir})
+	s.Require().NoError(err)
+	return s.readGenerated(outDir, target)
 }
 
 func (s *WebGeneratorTestSuite) requireNoGeneratedFile(outDir string, target string) {
