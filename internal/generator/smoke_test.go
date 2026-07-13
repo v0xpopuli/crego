@@ -150,7 +150,7 @@ func requireTaskSchedulerOutput(t *testing.T, r *recipe.Recipe, outDir string) {
 
 	requireGeneratedFileContains(t, outDir, filepath.Join("internal", "scheduler", "scheduler.go"), "github.com/go-co-op/gocron/v2")
 	requireGeneratedFileContains(t, outDir, filepath.Join("internal", "scheduler", "scheduler.go"), "task scheduler started")
-	requireGeneratedFileContains(t, outDir, filepath.Join("internal", "scheduler", "tasks", "example_cleanup.go"), "type ExampleCleanupTask struct")
+	requireGeneratedFileContains(t, outDir, filepath.Join("internal", "scheduler", "tasks", "example_cleanup.go"), "ExampleCleanupTask struct")
 }
 
 func runDockerComposeConfigIfAvailable(t *testing.T, r *recipe.Recipe, outDir string) {

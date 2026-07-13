@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -30,12 +31,19 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 	if err != nil {
 		return nil, fmt.Errorf("configure logger: %w", err)
 	}
+	cleanup := []func(){logger.Sync}
+	defer func() {
+		for index := len(cleanup) - 1; index >= 0; index-- {
+			cleanup[index]()
+		}
+	}()
 
 	mysqlClient, err := database.NewMySQLClient(ctx, cfg.Database.MySQL, logger)
 	if err != nil {
 		return nil, fmt.Errorf("connect mysql database: %w", err)
 	}
-	return &Application{
+	cleanup = append(cleanup, func() { _ = mysqlClient.Shutdown(context.Background()) })
+	application := &Application{
 		ctx:       ctx,
 		startedAt: time.Now(),
 		logger:    logger,
@@ -43,11 +51,27 @@ func New(ctx context.Context, cfg config.Config) (*Application, error) {
 			mysqlClient,
 		)),
 		mysqlClient: mysqlClient,
-	}, nil
+	}
+	cleanup = nil
+	return application, nil
 }
 
-func (a *Application) Run() error {
+func (a *Application) Run() (runErr error) {
 	defer a.logger.Sync()
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := a.Shutdown(shutdownCtx); err != nil {
+			if runErr == nil {
+				runErr = err
+				return
+			}
+			a.logger.Error("application shutdown failed", "error", err)
+			return
+		}
+		a.logger.Info("application shut down gracefully")
+	}()
 
 	if err := a.mysqlClient.RunMigrations(a.ctx); err != nil {
 		return fmt.Errorf("run mysql migrations: %w", err)
@@ -72,30 +96,24 @@ func (a *Application) Run() error {
 	}
 
 	a.logger.Info("application shutdown initiated")
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	if err := a.Shutdown(shutdownCtx); err != nil {
-		return err
-	}
-	a.logger.Info("application shut down gracefully")
 	return nil
+
 }
 
 func (a *Application) Shutdown(ctx context.Context) error {
+	var shutdownErrors []error
 	if err := a.server.Shutdown(ctx); err != nil {
 		a.logger.Error("shutdown failed", "error", err)
-		return fmt.Errorf("shutdown server: %w", err)
+		shutdownErrors = append(shutdownErrors, fmt.Errorf("shutdown server: %w", err))
 	}
 
 	if a.mysqlClient != nil {
 		if err := a.mysqlClient.Shutdown(ctx); err != nil {
 			a.logger.Error("mysql database shutdown failed", "error", err)
-			return fmt.Errorf("shutdown mysql database: %w", err)
+			shutdownErrors = append(shutdownErrors, fmt.Errorf("shutdown mysql database: %w", err))
 		}
 	}
-	return nil
+	return errors.Join(shutdownErrors...)
 }
 
 func readinessChecks(checkers ...handler.Checker) handler.Checks {

@@ -366,6 +366,23 @@ database:
 	s.Require().Contains(err.Error(), "database.nosql=postgres is invalid")
 }
 
+func (s *RecipeTestSuite) TestLoadRejectsDatabaseForCLIProject() {
+	path := s.writeRecipe(`version: v1
+project:
+  name: orders-cli
+  module: github.com/example/orders-cli
+  type: cli
+database:
+  driver: postgres
+  framework: pgx
+`)
+
+	_, err := Load(path)
+
+	s.Require().Error(err)
+	s.Require().Contains(err.Error(), "database integrations are only supported for project.type=web")
+}
+
 func (s *RecipeTestSuite) TestDatabasePresetsAreValid() {
 	for _, name := range []string{PresetWebPostgres, PresetWebMySQL, PresetWebSQLite, PresetWebRedis, PresetWebMongoDB} {
 		s.Run(name, func() {

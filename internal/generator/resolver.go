@@ -314,6 +314,7 @@ func databaseGoModules(r *recipe.Recipe) []component.GoModule {
 			case recipe.DatabaseFrameworkDatabaseSQL:
 				add("github.com/go-sql-driver/mysql", "v1.9.3")
 			case recipe.DatabaseFrameworkGORM:
+				add("github.com/go-sql-driver/mysql", "v1.9.3")
 				add("gorm.io/gorm", "v1.31.1")
 				add("gorm.io/driver/mysql", "v1.6.0")
 			}

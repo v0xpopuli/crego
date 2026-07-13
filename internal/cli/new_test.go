@@ -114,6 +114,19 @@ func (s *CliTestSuite) TestNewCommand() {
 		s.Require().Contains(err.Error(), "database.framework=pgx is only supported with database.driver=postgres")
 	})
 
+	s.Run("database flags are rejected for cli projects", func() {
+		_, _, err := s.executeCLI(
+			"new", "github.com/example/orders-cli",
+			"--type", "cli",
+			"--database", "postgres",
+			"--framework", "pgx",
+			"--non-interactive",
+		)
+
+		s.Require().Error(err)
+		s.Require().Contains(err.Error(), "database integrations are only supported for project.type=web")
+	})
+
 	s.Run("derives output directory from module basename", func() {
 		workingDir := s.T().TempDir()
 		currentDir, err := os.Getwd()

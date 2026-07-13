@@ -10,6 +10,7 @@ import (
 	"database/sql"
 {{ end }}
 	"fmt"
+	"net/url"
 {{ if or (eq .Recipe.Database.Framework "sql") (eq .Recipe.Database.Framework "gorm") }}
 	"time"
 {{ end }}
@@ -136,9 +137,16 @@ func (c *PostgresClient) Shutdown(ctx context.Context) error {
 }
 
 func postgresAddress(cfg {{ if eq .Recipe.Layout.Style "minimal" }}PostgresConfig{{ else }}config.PostgresConfig{{ end }}) string {
-	address := fmt.Sprintf("postgres://%s:%s@%s/%s", cfg.UserName, cfg.Password, cfg.Host, cfg.Database)
-	if cfg.SSLMode != "" {
-		address += "?sslmode=" + cfg.SSLMode
+	address := &url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(cfg.UserName, cfg.Password),
+		Host:   cfg.Host,
+		Path:   "/" + cfg.Database,
 	}
-	return address
+	if cfg.SSLMode != "" {
+		query := address.Query()
+		query.Set("sslmode", cfg.SSLMode)
+		address.RawQuery = query.Encode()
+	}
+	return address.String()
 }

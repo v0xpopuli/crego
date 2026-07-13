@@ -21,7 +21,7 @@ build:
 
 
 docker-build:
-	docker build -t $(IMAGE_NAME) .
+	docker build -f deployments/Dockerfile -t $(IMAGE_NAME) .
 
 docker-run:
 	docker run --rm -p $(HTTP_PORT):$(HTTP_PORT) $(DOCKER_RUN_ENV) $(IMAGE_NAME)

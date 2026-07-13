@@ -2,12 +2,16 @@ FROM golang:{{ .Recipe.Go.Version }}-alpine AS build
 
 WORKDIR /src
 
+{{ if and (hasDatabase "sqlite") (eq .Recipe.Database.Framework "gorm") -}}
+RUN apk add --no-cache build-base
+
+{{ end -}}
 COPY go.mod ./
 RUN go mod download
 
 COPY . .
 RUN go mod tidy
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/{{ .ProjectName }} ./cmd/{{ .ProjectName }}
+RUN CGO_ENABLED={{ if and (hasDatabase "sqlite") (eq .Recipe.Database.Framework "gorm") }}1{{ else }}0{{ end }} go build -trimpath -ldflags="-s -w" -o /out/{{ .ProjectName }} ./cmd/{{ .ProjectName }}
 
 FROM alpine:3.22
 

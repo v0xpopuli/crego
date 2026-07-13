@@ -8,11 +8,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+{{ if eq .Recipe.Database.Migrations "migrate" }}
+	"net/url"
+{{ end }}
 	"time"
 
-{{ if eq .Recipe.Database.Framework "sql" }}
-	_ "github.com/go-sql-driver/mysql"
-{{ end }}
+	mysqldriver "github.com/go-sql-driver/mysql"
 {{ if eq .Recipe.Database.Framework "gorm" }}
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -104,9 +105,26 @@ func (c *MySQLClient) Shutdown(ctx context.Context) error {
 }
 
 func mysqlDSN(cfg {{ if eq .Recipe.Layout.Style "minimal" }}MySQLConfig{{ else }}config.MySQLConfig{{ end }}) string {
-	address := fmt.Sprintf("%s:%s@tcp(%s)/%s", cfg.UserName, cfg.Password, cfg.Host, cfg.Database)
+	driverConfig := mysqldriver.NewConfig()
+	driverConfig.User = cfg.UserName
+	driverConfig.Passwd = cfg.Password
+	driverConfig.Net = "tcp"
+	driverConfig.Addr = cfg.Host
+	driverConfig.DBName = cfg.Database
+	driverConfig.ParseTime = cfg.ParseTime
+	return driverConfig.FormatDSN()
+}
+
+{{ if eq .Recipe.Database.Migrations "migrate" -}}
+func mysqlMigrationURL(cfg {{ if eq .Recipe.Layout.Style "minimal" }}MySQLConfig{{ else }}config.MySQLConfig{{ end }}) string {
+	credentials := ""
+	if cfg.UserName != "" {
+		credentials = url.UserPassword(cfg.UserName, cfg.Password).String() + "@"
+	}
+	address := fmt.Sprintf("mysql://%stcp(%s)/%s", credentials, cfg.Host, url.PathEscape(cfg.Database))
 	if cfg.ParseTime {
 		address += "?parseTime=true"
 	}
 	return address
 }
+{{ end -}}

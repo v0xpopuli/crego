@@ -2,18 +2,20 @@ package main
 
 import (
 	"context"
-{{ if ne .Recipe.Configuration.Format "env" -}}
+{{- if ne .Recipe.Configuration.Format "env" }}
 	"flag"
-{{ end -}}
+{{- end }}
 	"fmt"
 	"os"
+{{- if .Recipe.Server.GracefulShutdown }}
 	"os/signal"
 	"syscall"
+{{- end }}
 
 	"{{ .ModulePath }}/internal/app"
-{{ if ne .Recipe.Layout.Style "minimal" -}}
+{{- if ne .Recipe.Layout.Style "minimal" }}
 	"{{ .ModulePath }}/internal/config"
-{{ end -}}
+{{- end }}
 )
 {{ if ne .Recipe.Configuration.Format "env" }}
 const (
@@ -23,8 +25,12 @@ const (
 )
 {{ end }}
 func main() {
+{{ if .Recipe.Server.GracefulShutdown -}}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+{{ else -}}
+	ctx := context.Background()
+{{ end }}
 
 	cfg, err := loadConfig()
 	if err != nil {
